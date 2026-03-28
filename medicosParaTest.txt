@@ -1,0 +1,26 @@
+MEDIYA - medicos precargados para test de registro web
+
+Estos 3 medicos existen solo en approved_doctors.
+Todavia no tienen email ni password porque aun no se registraron en la app.
+El objetivo del test es  que el registro web cree el active_doctor a partir de uno de estos registros aprobados.
+
+1. full_name: Dra. Martina Quiroga
+   dni: 30111222
+   license_number: MN-145872
+   organization: OSDE
+   specialty: Clinica medica
+   status: approved
+
+2. full_name: Dr. Federico Alvarez
+   dni: 28444555
+   license_number: MN-132564
+   organization: Swiss Medical
+   specialty: Cardiologia
+   status: approved
+
+3. full_name: Dra. Camila Benitez
+   dni: 32666777
+   license_number: MN-158903
+   organization: Galeno
+   specialty: Pediatria
+   status: approved

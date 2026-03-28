@@ -1,0 +1,1 @@
+Quiero que leas el archivo /features/calendario5_implementacion.md e implementa el plan en el codebase actual teniendo en cuenta que tenes acceso al mcp server de supabase en el caso de que haya que hacer alguna modificacion de tablas y/o migracion.
