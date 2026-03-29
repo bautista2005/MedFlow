@@ -1,24 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BellRing, ClipboardList, HeartPulse } from "lucide-react";
 
 import type { CreatePatientRequestPayload, PatientDashboardResponse } from "@/lib/patient/types";
 import {
   createPatientRequest,
   getPatientDashboard,
-  getPatientNotificationBadgeSummary,
   updatePatientAlternativePharmacy,
 } from "@/services/patient/patient-service";
 import { PatientEmptyState } from "@/components/mediya/patient/patient-empty-state";
-import { PatientNotificationsPanel } from "@/components/mediya/patient/patient-notifications-panel";
 import { PatientRequestTracker } from "@/components/mediya/patient/patient-request-tracker";
 import { PatientTreatmentCard } from "@/components/mediya/patient/patient-treatment-card";
+import { PatientTreatmentsHeader } from "@/components/mediya/patient/patient-treatments-header";
 import { PatientWeeklyCalendar } from "@/components/mediya/patient/patient-weekly-calendar";
 
 export function PatientDashboard() {
   const [data, setData] = useState<PatientDashboardResponse | null>(null);
-  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [requestingId, setRequestingId] = useState<number | null>(null);
   const [updatingAlternativeRequestId, setUpdatingAlternativeRequestId] = useState<number | null>(
@@ -26,13 +23,8 @@ export function PatientDashboard() {
   );
 
   async function refresh() {
-    const [dashboardResult, notificationResult] = await Promise.all([
-      getPatientDashboard(),
-      getPatientNotificationBadgeSummary(),
-    ]);
-
+    const dashboardResult = await getPatientDashboard();
     setData(dashboardResult);
-    setUnreadNotificationCount(notificationResult.unread_count);
   }
 
   useEffect(() => {
@@ -85,8 +77,8 @@ export function PatientDashboard() {
         </div>
       ) : null}
 
-      <section className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
-        <div className="rounded-[22px] border border-blue-100 bg-[linear-gradient(135deg,_rgba(37,99,235,0.10),_rgba(59,130,246,0.04)_55%,_rgba(255,255,255,0.95))] px-6 py-6 shadow-[0_22px_50px_rgba(37,99,235,0.10)] md:px-7">
+      <section className="rounded-[22px] border border-blue-100 bg-[linear-gradient(135deg,_rgba(37,99,235,0.10),_rgba(59,130,246,0.04)_55%,_rgba(255,255,255,0.95))] px-6 py-6 shadow-[0_22px_50px_rgba(37,99,235,0.10)] md:px-7">
+        <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-700">
             Panel del paciente
           </p>
@@ -98,103 +90,36 @@ export function PatientDashboard() {
             disponibilidad de reposición desde un mismo lugar.
           </p>
         </div>
-
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
-          <div className="rounded-[20px] border border-slate-200 bg-white px-5 py-5 shadow-[0_16px_34px_rgba(15,23,42,0.05)]">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-[16px] bg-blue-50 text-blue-700">
-                <HeartPulse className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                  Tratamientos
-                </p>
-                <p className="text-2xl font-semibold text-slate-900">
-                  {data?.medications.length ?? 0}
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="rounded-[20px] border border-slate-200 bg-white px-5 py-5 shadow-[0_16px_34px_rgba(15,23,42,0.05)]">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-[16px] bg-blue-50 text-blue-700">
-                <ClipboardList className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                  Pedidos
-                </p>
-                <p className="text-2xl font-semibold text-slate-900">
-                  {data?.requests.length ?? 0}
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="rounded-[20px] border border-slate-200 bg-white px-5 py-5 shadow-[0_16px_34px_rgba(15,23,42,0.05)]">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-[16px] bg-blue-50 text-blue-700">
-                <BellRing className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                  Alertas
-                </p>
-                <p className="text-2xl font-semibold text-slate-900">
-                  {unreadNotificationCount}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.3fr_0.9fr]">
-        <div className="space-y-6">
-          <div className="rounded-[20px] border border-slate-200 bg-white p-3 shadow-[0_18px_40px_rgba(15,23,42,0.05)] md:p-4">
-            <div className="rounded-[18px] border border-blue-100 bg-[linear-gradient(180deg,_#ffffff,_#f5f9ff)] p-5 md:p-6">
-              <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">
-                    Mis tratamientos
-                  </p>
-                  <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-900">
-                    Seguimiento activo
-                  </h2>
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                    Visualizá la medicación cargada por tu médico y el estado de reposición de
-                    cada tratamiento.
-                  </p>
-                </div>
-              </div>
+        <div>
+          <div className="rounded-[24px] bg-white shadow-[0_16px_36px_rgba(15,23,42,0.06)]">
+            <PatientTreatmentsHeader />
 
-              <div className="grid gap-4">
-                {data?.medications.length ? (
-                  data.medications.map((medication) => (
-                    <PatientTreatmentCard
-                      key={medication.patient_medication_id}
-                      medication={medication}
-                      isSubmitting={requestingId === medication.patient_medication_id}
-                      onRequestRefill={handleRequestRefill}
-                    />
-                  ))
-                ) : (
-                  <PatientEmptyState
-                    title="Todavía no tenés tratamientos"
-                    description="Cuando tu médico cargue un tratamiento, vas a poder verlo acá junto con el estado de reposición."
-                    variant="treatments"
+            <div className="grid gap-4 px-5 pb-5 md:px-6 md:pb-6">
+              {data?.medications.length ? (
+                data.medications.map((medication) => (
+                  <PatientTreatmentCard
+                    key={medication.patient_medication_id}
+                    medication={medication}
+                    isSubmitting={requestingId === medication.patient_medication_id}
+                    onRequestRefill={handleRequestRefill}
                   />
-                )}
-              </div>
+                ))
+              ) : (
+                <PatientEmptyState
+                  title="Todavía no tenés tratamientos"
+                  description="Cuando tu médico cargue un tratamiento, vas a poder verlo acá junto con el estado de reposición."
+                  variant="treatments"
+                />
+              )}
             </div>
           </div>
-
-          <PatientWeeklyCalendar hasTreatments={Boolean(data?.medications.length)} />
         </div>
 
         <div>
           <div className="space-y-6">
-            <PatientNotificationsPanel mode="dashboard" />
-
             {data?.requests.length ? (
               <PatientRequestTracker
                 requests={data.requests}
@@ -211,6 +136,10 @@ export function PatientDashboard() {
             )}
           </div>
         </div>
+      </section>
+
+      <section className="mx-auto w-full max-w-6xl">
+        <PatientWeeklyCalendar hasTreatments={Boolean(data?.medications.length)} />
       </section>
     </div>
   );

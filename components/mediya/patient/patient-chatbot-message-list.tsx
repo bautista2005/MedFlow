@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef } from "react";
+
 import type { PatientChatLogSummary, PatientChatSeverity } from "@/lib/patient/types";
 import { cn } from "@/lib/utils";
 
@@ -34,6 +36,11 @@ export function PatientChatbotMessageList({
   isSending,
 }: PatientChatbotMessageListProps) {
   const orderedMessages = [...messages].reverse();
+  const endRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages.length, pendingUserMessage, isSending]);
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-1 py-1 pr-2">
@@ -91,6 +98,8 @@ export function PatientChatbotMessageList({
           </div>
         </div>
       ) : null}
+
+      <div ref={endRef} aria-hidden="true" />
     </div>
   );
 }

@@ -3,7 +3,10 @@ import { NextResponse } from "next/server";
 import { PatientSessionError, requireAuthenticatedPatient } from "@/lib/auth/patient-session";
 import { normalizeWeeklyScheduleSummary } from "@/lib/calendar/utils";
 import { calculateMedicationStatus } from "@/lib/patient/medication-calculations";
-import { createSystemNotification } from "@/lib/patient/notifications";
+import {
+  autoAdvancePrescriptionRequests,
+  createSystemNotification,
+} from "@/lib/patient/notifications";
 import { ACTIVE_PRESCRIPTION_REQUEST_STATUSES } from "@/lib/patient/types";
 import type {
   DoctorSummary,
@@ -179,6 +182,9 @@ async function emitPatientDashboardSystemNotifications(
 export async function GET(request: Request) {
   try {
     const patient = await requireAuthenticatedPatient(request);
+    await autoAdvancePrescriptionRequests({
+      patientId: patient.patientId,
+    });
     const supabase = createAdminSupabaseClient();
 
     const [

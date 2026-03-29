@@ -24,14 +24,14 @@ export async function PATCH(request: Request, context: RequestContext) {
       return NextResponse.json({ error: "Notificacion invalida." }, { status: 400 });
     }
 
-    const notification = await markPatientNotificationRead({
+    const result = await markPatientNotificationRead({
       patientId: patient.patientId,
       patientNotificationId: parsedNotificationId,
     });
 
     return NextResponse.json({
-      notification,
-      message: "Notificacion marcada como leida.",
+      deleted_notification_id: result.deletedNotificationId,
+      message: "Notificacion eliminada.",
     });
   } catch (error) {
     if (error instanceof PatientSessionError) {
@@ -43,7 +43,7 @@ export async function PATCH(request: Request, context: RequestContext) {
     }
 
     return NextResponse.json(
-      { error: "No se pudo actualizar la notificacion." },
+      { error: "No se pudo eliminar la notificacion." },
       { status: 500 },
     );
   }

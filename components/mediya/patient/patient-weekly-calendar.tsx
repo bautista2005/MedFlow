@@ -83,17 +83,20 @@ function updateDoseInCalendar(
 
 function CalendarSkeleton() {
   return (
-    <div className="grid gap-3 xl:grid-cols-7">
-      {Array.from({ length: 7 }).map((_, index) => (
-        <div
-          key={index}
-          className="space-y-3 rounded-[20px] border border-slate-200 bg-white/85 p-4"
-        >
-          <div className="h-5 w-20 animate-pulse rounded-full bg-slate-200" />
-          <div className="h-4 w-12 animate-pulse rounded-full bg-slate-100" />
-          <div className="h-24 animate-pulse rounded-[16px] bg-slate-100" />
-        </div>
-      ))}
+    <div className="overflow-x-auto pb-2">
+      <div className="flex min-w-max gap-3">
+        {Array.from({ length: 7 }).map((_, index) => (
+          <div
+            key={index}
+            className="w-[9.25rem] shrink-0 space-y-1 rounded-[14px] border border-slate-200 bg-white/85 p-2"
+          >
+            <div className="h-3 w-12 animate-pulse rounded-full bg-slate-200" />
+            <div className="h-2.5 w-10 animate-pulse rounded-full bg-slate-100" />
+            <div className="h-10 animate-pulse rounded-[10px] bg-slate-100" />
+            <div className="h-10 animate-pulse rounded-[10px] bg-slate-100" />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -208,33 +211,33 @@ export function PatientWeeklyCalendar({
   }
 
   return (
-    <Card className="border-emerald-100/80 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(240,253,250,0.98))] shadow-[0_24px_60px_rgba(16,185,129,0.08)]">
-      <CardHeader className="space-y-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-3">
-            <Badge className="border-emerald-200 bg-emerald-50 text-emerald-900">
+    <Card className="border-emerald-100/80 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(240,253,250,0.98))] shadow-[0_18px_42px_rgba(16,185,129,0.08)]">
+      <CardHeader className="space-y-2.5 pb-2">
+        <div className="flex flex-col gap-2.5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-1.5">
+            <Badge className="w-fit border-emerald-200 bg-emerald-50 text-emerald-900">
               Calendario semanal
             </Badge>
             <div className="space-y-1">
-              <CardTitle className="flex items-center gap-2 text-[1.7rem]">
-                <CalendarDays className="h-5 w-5 text-emerald-700" />
+              <CardTitle className="flex items-center gap-1.5 text-[1.2rem]">
+                <CalendarDays className="h-4 w-4 text-emerald-700" />
                 Seguimiento de tomas
               </CardTitle>
-              <p className="max-w-2xl text-sm leading-6 text-slate-600">
-                Revisá la medicación programada para cada día y el estado registrado de
-                cada toma.
+              <p className="max-w-2xl text-xs leading-4.5 text-slate-600">
+                Marcá cada toma y revisá la semana activa.
               </p>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 lg:max-w-[26rem] lg:justify-end">
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={() => updateWeek(addDaysToIsoDate(weekStart, -7))}
+              className="h-7 px-2.5 text-[11px]"
             >
-              <ChevronLeft className="mr-1 h-4 w-4" />
+              <ChevronLeft className="mr-1 h-3.5 w-3.5" />
               Anterior
             </Button>
             <Button
@@ -242,6 +245,7 @@ export function PatientWeeklyCalendar({
               variant="outline"
               size="sm"
               onClick={() => updateWeek(buildCurrentWeekStart())}
+              className="h-7 px-2.5 text-[11px]"
             >
               Semana actual
             </Button>
@@ -250,20 +254,21 @@ export function PatientWeeklyCalendar({
               variant="outline"
               size="sm"
               onClick={() => updateWeek(addDaysToIsoDate(weekStart, 7))}
+              className="h-7 px-2.5 text-[11px]"
             >
               Siguiente
-              <ChevronRight className="ml-1 h-4 w-4" />
+              <ChevronRight className="ml-1 h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
 
-        <div className="rounded-[16px] border border-emerald-100 bg-white/80 px-4 py-3 text-sm text-slate-600">
+        <div className="rounded-[12px] border border-emerald-100 bg-white/80 px-3 py-1.5 text-xs text-slate-600">
           <span className="font-medium text-slate-900">Semana</span>
           {calendar ? ` · ${formatWeekRange(calendar)}` : null}
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-2.5 pt-0">
         {errorMessage ? (
           <div className="rounded-[1.2rem] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {errorMessage}
@@ -285,16 +290,18 @@ export function PatientWeeklyCalendar({
         ) : null}
 
         {!isLoading && calendar && calendar.has_calendar ? (
-          <div className="grid gap-3 xl:grid-cols-7">
-            {calendar.days.map((day) => (
-              <PatientWeeklyCalendarDayCard
-                key={day.date}
-                day={day}
-                errorByDoseKey={doseErrors}
-                savingDoseKey={savingDoseKey}
-                onDoseStatusChange={handleDoseStatusChange}
-              />
-            ))}
+          <div className="overflow-x-auto pb-1">
+            <div className="flex min-w-max gap-2">
+              {calendar.days.map((day) => (
+                <PatientWeeklyCalendarDayCard
+                  key={day.date}
+                  day={day}
+                  errorByDoseKey={doseErrors}
+                  savingDoseKey={savingDoseKey}
+                  onDoseStatusChange={handleDoseStatusChange}
+                />
+              ))}
+            </div>
           </div>
         ) : null}
       </CardContent>

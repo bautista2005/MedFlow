@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       updated_count: updatedCount,
-      message: "Notificaciones marcadas como leidas.",
+      message: "Notificaciones eliminadas.",
     });
   } catch (error) {
     if (error instanceof PatientSessionError) {
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(
-      { error: "No se pudieron actualizar las notificaciones." },
+      { error: "No se pudieron eliminar las notificaciones." },
       { status: 500 },
     );
   }

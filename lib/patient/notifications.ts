@@ -14,7 +14,6 @@ import type {
 import { buildPrescriptionProgressSummary } from "@/lib/patient/prescription-progress";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 
-const FORCE_AUTO_READY_FOR_PICKUP_FOR_TESTING = true;
 const AUTO_READY_FOR_PICKUP_DELAY_MS = 5_000;
 
 export class PatientNotificationError extends Error {
@@ -537,13 +536,9 @@ export async function transitionPrescriptionRequestStatus(
   } satisfies PrescriptionWorkflowRequest;
 }
 
-export async function autoAdvanceTestingPrescriptionRequests(
+export async function autoAdvancePrescriptionRequests(
   options: AutoAdvancePrescriptionRequestsOptions = {},
 ) {
-  if (!FORCE_AUTO_READY_FOR_PICKUP_FOR_TESTING) {
-    return;
-  }
-
   const cutoffIso = new Date(Date.now() - AUTO_READY_FOR_PICKUP_DELAY_MS).toISOString();
   const supabase = createAdminSupabaseClient();
   let query = supabase
@@ -849,6 +844,17 @@ export async function listPatientNotifications(input: {
   limit?: number | null;
 }): Promise<PatientNotificationListResponse> {
   const supabase = createAdminSupabaseClient();
+
+  const { error: purgeError } = await supabase
+    .from("patient_notifications")
+    .delete()
+    .eq("patient_id", input.patientId)
+    .eq("status", "read");
+
+  if (purgeError) {
+    throw new PatientNotificationError("No se pudieron cargar las notificaciones.", 500);
+  }
+
   let notificationsQuery = supabase
     .from("patient_notifications")
     .select(patientNotificationSelect)
@@ -914,19 +920,14 @@ export async function listPatientNotifications(input: {
 export async function markPatientNotificationRead(input: {
   patientId: number;
   patientNotificationId: number;
-}): Promise<PatientNotificationSummary> {
+}): Promise<{ deletedNotificationId: number }> {
   const supabase = createAdminSupabaseClient();
-  const now = new Date().toISOString();
-
   const { data, error } = await supabase
     .from("patient_notifications")
-    .update({
-      status: "read",
-      read_at: now,
-    })
+    .delete()
     .eq("patient_notification_id", input.patientNotificationId)
     .eq("patient_id", input.patientId)
-    .select(patientNotificationSelect)
+    .select("patient_notification_id")
     .maybeSingle();
 
   if (error) {
@@ -937,23 +938,20 @@ export async function markPatientNotificationRead(input: {
     throw new PatientNotificationError("La notificacion no existe.", 404);
   }
 
-  return mapPatientNotification(data as PatientNotificationRow);
+  return {
+    deletedNotificationId: data.patient_notification_id,
+  };
 }
 
 export async function markAllPatientNotificationsRead(input: {
   patientId: number;
 }): Promise<number> {
   const supabase = createAdminSupabaseClient();
-  const now = new Date().toISOString();
 
   const { data, error } = await supabase
     .from("patient_notifications")
-    .update({
-      status: "read",
-      read_at: now,
-    })
+    .delete()
     .eq("patient_id", input.patientId)
-    .eq("status", "unread")
     .select("patient_notification_id");
 
   if (error) {

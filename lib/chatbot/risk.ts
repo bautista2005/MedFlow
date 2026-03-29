@@ -10,14 +10,39 @@ import { ACTIVE_PRESCRIPTION_REQUEST_STATUSES, type PrescriptionRequestStatus } 
 const CRITICAL_KEYWORDS = [
   "pecho",
   "respirar",
+  "falta de aire",
+  "no puedo respirar",
   "desmayo",
   "convulsion",
+  "fractura",
+  "fracture",
+  "quebre",
+  "quebrado",
+  "quebrada",
+  "hueso",
+  "brazo roto",
+  "pierna rota",
   "sangrado",
   "alergia",
   "hinchazon",
+  "hinchazon severa",
+  "reaccion alergica",
 ];
 
-const WARNING_KEYWORDS = ["mareo", "dolor", "fiebre", "nausea", "vomito", "debilidad"];
+const WARNING_KEYWORDS = [
+  "mareo",
+  "dolor",
+  "fiebre",
+  "nausea",
+  "vomito",
+  "debilidad",
+  "me cayo mal",
+  "me hizo mal",
+  "malestar",
+  "rash",
+  "ronchas",
+  "diarrea",
+];
 
 function clampScore(value: number) {
   return Math.max(0, Math.min(1, value));
@@ -75,7 +100,10 @@ function normalizeSeverity(value: string | null | undefined): ChatbotSeverity {
 }
 
 export function detectLocalSeverityFromMessage(message: string): ChatbotSeverity {
-  const normalizedMessage = message.toLowerCase();
+  const normalizedMessage = message
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 
   if (CRITICAL_KEYWORDS.some((keyword) => normalizedMessage.includes(keyword))) {
     return "critical";

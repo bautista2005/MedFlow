@@ -1,19 +1,21 @@
-import { buildPatientChatContextSnapshot, getRecentActiveRequestStatuses, loadPatientChatbotContext } from "@/lib/chatbot/context";
+import {
+  buildEmptyPatientChatContextSnapshot,
+  loadPatientChatbotContext,
+  loadPatientChatRoutingContext,
+} from "@/lib/chatbot/context";
 import { createDoctorPatientAlert } from "@/lib/chatbot/alerts";
 import { CHATBOT_DISCLAIMER, buildChatbotSystemPrompt } from "@/lib/chatbot/prompt";
-import { calculateChatbotRisk, calculateWeeklyRiskSummary, detectLocalSeverityFromMessage } from "@/lib/chatbot/risk";
-import type {
-  ChatbotContextSummary,
-  ChatbotLlmResult,
-  PersistedChatbotExchange,
-} from "@/lib/chatbot/types";
+import { calculateWeeklyRiskSummary } from "@/lib/chatbot/risk";
+import type { ChatbotLlmResult } from "@/lib/chatbot/types";
 import { getGeminiEnv } from "@/lib/env";
-import type { PatientChatMessageResponse, PrescriptionRequestStatus } from "@/lib/patient/types";
+import type {
+  PatientChatLogSummary,
+  PatientChatMessageResponse,
+  PrescriptionRequestStatus,
+} from "@/lib/patient/types";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 
 const MAX_MESSAGE_LENGTH = 1000;
-const CHAT_RATE_LIMIT_WINDOW_MS = 60_000;
-const CHAT_RATE_LIMIT_MAX_MESSAGES = 4;
 
 export class PatientChatbotError extends Error {
   status: number;
@@ -47,44 +49,64 @@ function parseChatbotMessage(message: string) {
   return normalizedMessage;
 }
 
-async function enforcePatientChatRateLimit(patientId: number) {
-  const supabase = createAdminSupabaseClient();
-  const windowStart = new Date(Date.now() - CHAT_RATE_LIMIT_WINDOW_MS).toISOString();
-  const { count, error } = await supabase
-    .from("patient_chat_logs")
-    .select("patient_chat_log_id", { count: "exact", head: true })
-    .eq("patient_id", patientId)
-    .gte("created_at", windowStart);
+function buildFallbackLlmResult(): ChatbotLlmResult {
+  return {
+    reply:
+      "Gracias por contarmelo. Puedo orientarte de forma general, pero si el malestar persiste, empeora o te preocupa, consulta a tu medico.",
+    severity: "normal",
+    symptom_tags: [],
+    advice_flags: [],
+    requires_medical_attention: false,
+  };
+}
 
-  if (error) {
-    throw new Error("No se pudo validar el limite del chatbot.");
-  }
-
-  if ((count ?? 0) >= CHAT_RATE_LIMIT_MAX_MESSAGES) {
-    throw new PatientChatbotError(
-      "Por favor espera un momento antes de enviar otro mensaje.",
-      429,
-    );
+function severityToRiskScore(severity: ChatbotLlmResult["severity"]) {
+  switch (severity) {
+    case "critical":
+      return 0.9;
+    case "warning":
+      return 0.55;
+    default:
+      return 0.1;
   }
 }
 
-function buildFallbackLlmResult(message: string): ChatbotLlmResult {
-  const severity = detectLocalSeverityFromMessage(message);
-  const requiresMedicalAttention = severity === "critical";
-  const reply =
-    severity === "critical"
-      ? "Lo que describis puede requerir atencion medica pronta. Contacta a tu medico o a una guardia ahora mismo si el malestar es intenso o empeora."
-      : severity === "warning"
-        ? "Entiendo lo que comentas. Conviene que sigas registrando los sintomas y, si persisten o empeoran, avises a tu medico para seguimiento."
-        : "Gracias por contarmelo. Puedo ayudarte a registrar esto y orientarte, pero si notas cambios importantes debes consultar a tu medico.";
+function normalizeSeverityValue(value: unknown): ChatbotLlmResult["severity"] {
+  if (typeof value !== "string") {
+    return "normal";
+  }
 
-  return {
-    reply,
-    severity,
-    symptom_tags: [],
-    advice_flags: requiresMedicalAttention ? ["seek_medical_attention"] : [],
-    requires_medical_attention: requiresMedicalAttention,
-  };
+  const normalizedValue = value.trim().toLowerCase();
+
+  if (normalizedValue === "warning" || normalizedValue === "critical") {
+    return normalizedValue;
+  }
+
+  return "normal";
+}
+
+function parseJsonObject(rawText: string) {
+  const trimmedText = rawText.trim();
+
+  if (!trimmedText) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(trimmedText) as unknown;
+  } catch {
+    const match = trimmedText.match(/\{[\s\S]*\}/);
+
+    if (!match) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(match[0]) as unknown;
+    } catch {
+      return null;
+    }
+  }
 }
 
 function normalizeLlmResult(value: unknown): ChatbotLlmResult | null {
@@ -101,22 +123,19 @@ function normalizeLlmResult(value: unknown): ChatbotLlmResult | null {
 
   return {
     reply,
-    severity:
-      candidate.severity === "warning" || candidate.severity === "critical"
-        ? candidate.severity
-        : "normal",
+    severity: normalizeSeverityValue(candidate.severity),
     symptom_tags: normalizeSymptomTags(candidate.symptom_tags),
     advice_flags: normalizeSymptomTags(candidate.advice_flags),
     requires_medical_attention: candidate.requires_medical_attention === true,
   };
 }
 
-async function callGemini(message: string, context: ChatbotContextSummary) {
+async function callGemini(message: string) {
   const gemini = getGeminiEnv();
 
   if (!gemini.apiKey) {
     return {
-      result: buildFallbackLlmResult(message),
+      result: buildFallbackLlmResult(),
       provider: "fallback",
       model: "local-rules",
     };
@@ -141,7 +160,7 @@ async function callGemini(message: string, context: ChatbotContextSummary) {
             },
           ],
           systemInstruction: {
-            parts: [{ text: buildChatbotSystemPrompt(context) }],
+            parts: [{ text: buildChatbotSystemPrompt() }],
           },
           generationConfig: {
             responseMimeType: "application/json",
@@ -153,8 +172,15 @@ async function callGemini(message: string, context: ChatbotContextSummary) {
     );
 
     if (!response.ok) {
+      const errorText = await response.text().catch(() => "");
+      console.error("Gemini request failed", {
+        status: response.status,
+        statusText: response.statusText,
+        body: errorText.slice(0, 500),
+      });
+
       return {
-        result: buildFallbackLlmResult(message),
+        result: buildFallbackLlmResult(),
         provider: "fallback",
         model: "local-rules",
       };
@@ -168,11 +194,15 @@ async function callGemini(message: string, context: ChatbotContextSummary) {
       }>;
     };
     const rawText = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-    const parsed = normalizeLlmResult(rawText ? JSON.parse(rawText) : null);
+    const parsed = normalizeLlmResult(parseJsonObject(rawText));
 
     if (!parsed) {
+      console.error("Gemini response could not be parsed", {
+        rawText: rawText.slice(0, 500),
+      });
+
       return {
-        result: buildFallbackLlmResult(message),
+        result: buildFallbackLlmResult(),
         provider: "fallback",
         model: "local-rules",
       };
@@ -183,9 +213,11 @@ async function callGemini(message: string, context: ChatbotContextSummary) {
       provider: "gemini",
       model: gemini.model,
     };
-  } catch {
+  } catch (error) {
+    console.error("Gemini request threw", error);
+
     return {
-      result: buildFallbackLlmResult(message),
+      result: buildFallbackLlmResult(),
       provider: "fallback",
       model: "local-rules",
     };
@@ -194,165 +226,99 @@ async function callGemini(message: string, context: ChatbotContextSummary) {
   }
 }
 
-function mapPersistedChatLog(row: {
-  patient_chat_log_id: number;
-  patient_id: number;
-  active_doctor_id: number | null;
-  patient_medication_id: number | null;
-  message_user: string;
-  message_ai: string;
-  severity: "normal" | "warning" | "critical";
-  risk_score: number;
-  symptom_tags: string[] | null;
-  context_snapshot: PersistedChatbotExchange["context_snapshot"] | null;
-  created_at: string;
-}): PersistedChatbotExchange {
-  return {
-    patient_chat_log_id: row.patient_chat_log_id,
-    patient_id: row.patient_id,
-    active_doctor_id: row.active_doctor_id,
-    patient_medication_id: row.patient_medication_id,
-    message_user: row.message_user,
-    message_ai: row.message_ai,
-    severity: row.severity,
-    risk_score: row.risk_score,
-    symptom_tags: row.symptom_tags ?? [],
-    context_snapshot: row.context_snapshot ?? {
-      patient_name: "",
-      primary_doctor_name: null,
-      active_medications_count: 0,
-      active_medication_names: [],
-      recent_requests: { total: 0, statuses: [] },
-      adherence_last_7_days: {
-        scheduled: 0,
-        taken: 0,
-        taken_late: 0,
-        missed: 0,
-        adherence_ratio: null,
-      },
-    },
-    created_at: row.created_at,
-  };
-}
-
-async function persistChatExchange(input: {
-  patientId: number;
-  activeDoctorId: number | null;
-  context: ChatbotContextSummary;
-  message: string;
-  reply: string;
-  severity: "normal" | "warning" | "critical";
-  riskScore: number;
-  symptomTags: string[];
-  provider: string;
-  model: string;
-}) {
-  const supabase = createAdminSupabaseClient();
-  const primaryMedicationId = input.context.active_medications[0]?.patient_medication_id ?? null;
-  const { data, error } = await supabase
-    .from("patient_chat_logs")
-    .insert({
-      patient_id: input.patientId,
-      active_doctor_id: input.activeDoctorId,
-      patient_medication_id: primaryMedicationId,
-      message_user: input.message,
-      message_ai: input.reply,
-      severity: input.severity,
-      risk_score: input.riskScore,
-      symptom_tags: input.symptomTags,
-      context_snapshot: buildPatientChatContextSnapshot(input.context),
-      llm_provider: input.provider,
-      llm_model: input.model,
-    })
-    .select(
-      "patient_chat_log_id, patient_id, active_doctor_id, patient_medication_id, message_user, message_ai, severity, risk_score, symptom_tags, context_snapshot, created_at",
-    )
-    .single();
-
-  if (error || !data) {
-    throw new Error("No se pudo guardar el historial del chatbot.");
-  }
-
-  return mapPersistedChatLog(
-    data as {
-      patient_chat_log_id: number;
-      patient_id: number;
-      active_doctor_id: number | null;
-      patient_medication_id: number | null;
-      message_user: string;
-      message_ai: string;
-      severity: "normal" | "warning" | "critical";
-      risk_score: number;
-      symptom_tags: string[] | null;
-      context_snapshot: PersistedChatbotExchange["context_snapshot"] | null;
-      created_at: string;
-    },
-  );
-}
-
 export async function processPatientChatMessage(input: {
   patientId: number;
   message: string;
 }): Promise<PatientChatMessageResponse> {
   const message = parseChatbotMessage(input.message);
-  await enforcePatientChatRateLimit(input.patientId);
-  const context = await loadPatientChatbotContext(input.patientId);
-  const llm = await callGemini(message, context);
-  const risk = calculateChatbotRisk({
-    llmResult: llm.result,
-    context,
-    message,
-  });
-  const persistedMessage = await persistChatExchange({
-    patientId: input.patientId,
-    activeDoctorId: context.active_doctor_id,
-    context,
-    message,
-    reply: llm.result.reply,
-    severity: risk.final_severity,
-    riskScore: risk.final_risk_score,
-    symptomTags: llm.result.symptom_tags,
-    provider: llm.provider,
-    model: llm.model,
-  });
+  const routingContext = await loadPatientChatRoutingContext(input.patientId);
+  const llm = await callGemini(message);
+  const llmResult = llm.result;
+  const riskScore = severityToRiskScore(llmResult.severity);
+  const supabase = createAdminSupabaseClient();
+
+  const { data: persistedMessage, error: persistError } = await supabase
+    .from("patient_chat_logs")
+    .insert({
+      patient_id: input.patientId,
+      active_doctor_id: routingContext.active_doctor_id,
+      patient_medication_id: null,
+      message_user: message,
+      message_ai: llmResult.reply,
+      severity: llmResult.severity,
+      risk_score: riskScore,
+      symptom_tags: llmResult.symptom_tags,
+      context_snapshot: buildEmptyPatientChatContextSnapshot({
+        patientName: routingContext.patient_name,
+        primaryDoctorName: routingContext.primary_doctor_name,
+      }),
+      llm_provider: llm.provider,
+      llm_model: llm.model,
+    })
+    .select(
+      "patient_chat_log_id, patient_id, active_doctor_id, patient_medication_id, message_user, message_ai, severity, risk_score, symptom_tags, context_snapshot, created_at",
+    )
+    .maybeSingle();
+
+  if (persistError || !persistedMessage) {
+    throw new Error("No se pudo guardar el mensaje del asistente.");
+  }
+
+  const messageSummary: PatientChatLogSummary = {
+    patient_chat_log_id: persistedMessage.patient_chat_log_id,
+    patient_id: input.patientId,
+    active_doctor_id: persistedMessage.active_doctor_id,
+    patient_medication_id: persistedMessage.patient_medication_id,
+    message_user: message,
+    message_ai: llmResult.reply,
+    severity: llmResult.severity,
+    risk_score: riskScore,
+    symptom_tags: llmResult.symptom_tags,
+    context_snapshot: persistedMessage.context_snapshot,
+    created_at: persistedMessage.created_at,
+  };
 
   let createdAlert = false;
 
-  if (context.active_doctor_id && (risk.final_severity === "warning" || risk.final_severity === "critical")) {
+  if (
+    routingContext.active_doctor_id &&
+    (llmResult.severity === "warning" || llmResult.severity === "critical")
+  ) {
     const alert = await createDoctorPatientAlert({
       patientId: input.patientId,
-      activeDoctorId: context.active_doctor_id,
+      activeDoctorId: routingContext.active_doctor_id,
       patientChatLogId: persistedMessage.patient_chat_log_id,
-      severity: risk.final_severity,
+      severity: llmResult.severity,
       title:
-        risk.final_severity === "critical"
+        llmResult.severity === "critical"
           ? "Paciente requiere atencion prioritaria"
           : "Paciente en seguimiento por sintomas",
       message:
-        risk.final_severity === "critical"
-          ? `El asistente detecto una consulta sensible de ${context.patient_name}.`
-          : `El asistente registro un mensaje que conviene seguir de cerca para ${context.patient_name}.`,
+        llmResult.severity === "critical"
+          ? `Gemini detecto una consulta sensible de ${routingContext.patient_name}.`
+          : `Gemini registro un mensaje que conviene seguir de cerca para ${routingContext.patient_name}.`,
       metadata: {
-        symptom_tags: llm.result.symptom_tags,
-        active_request_statuses: getRecentActiveRequestStatuses(context.recent_requests),
-        override_reasons: risk.override_reasons,
+        message_user: message,
+        symptom_tags: llmResult.symptom_tags,
+        llm_severity: llmResult.severity,
+        requires_medical_attention: llmResult.requires_medical_attention,
       },
     });
     createdAlert = Boolean(alert);
   }
 
   return {
-    reply: llm.result.reply,
-    severity: risk.final_severity,
-    risk_score: risk.final_risk_score,
+    reply: llmResult.reply,
+    severity: llmResult.severity,
+    risk_score: riskScore,
     created_alert: createdAlert,
     disclaimer: CHATBOT_DISCLAIMER,
-    message: persistedMessage,
+    message: messageSummary,
   };
 }
 
 export async function listPatientChatHistory(input: { patientId: number; limit?: number }) {
-  const limit = typeof input.limit === "number" ? Math.min(Math.max(input.limit, 1), 20) : 20;
+  const limit = Math.min(Math.max(input.limit ?? 20, 1), 50);
   const supabase = createAdminSupabaseClient();
   const { data, error } = await supabase
     .from("patient_chat_logs")
@@ -364,26 +330,15 @@ export async function listPatientChatHistory(input: { patientId: number; limit?:
     .limit(limit);
 
   if (error) {
-    throw new Error("No se pudo cargar el historial del chatbot.");
+    throw new PatientChatbotError("No se pudo cargar el historial del asistente.", 500);
   }
 
-  return (data ?? []).map((row) =>
-    mapPersistedChatLog(
-      row as {
-        patient_chat_log_id: number;
-        patient_id: number;
-        active_doctor_id: number | null;
-        patient_medication_id: number | null;
-        message_user: string;
-        message_ai: string;
-        severity: "normal" | "warning" | "critical";
-        risk_score: number;
-        symptom_tags: string[] | null;
-        context_snapshot: PersistedChatbotExchange["context_snapshot"] | null;
-        created_at: string;
-      },
-    ),
-  );
+  return ((data ?? []) as PatientChatLogSummary[]).map((message) => ({
+    ...message,
+    symptom_tags: Array.isArray(message.symptom_tags)
+      ? message.symptom_tags.filter((item): item is string => typeof item === "string")
+      : [],
+  }));
 }
 
 function formatDateToIso(date: Date) {

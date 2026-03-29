@@ -7,7 +7,7 @@ import {
   listDoctorAlerts,
 } from "@/lib/chatbot/alerts";
 import { normalizeWeeklyScheduleSummary } from "@/lib/calendar/utils";
-import { autoAdvanceTestingPrescriptionRequests } from "@/lib/patient/notifications";
+import { autoAdvancePrescriptionRequests } from "@/lib/patient/notifications";
 import type {
   PatientDetail,
   PatientMedicationSummary,
@@ -151,7 +151,7 @@ export async function GET(request: Request, context: PatientContext) {
       );
     }
 
-    await autoAdvanceTestingPrescriptionRequests({
+    await autoAdvancePrescriptionRequests({
       activeDoctorId: doctor.activeDoctorId,
       patientId: parsedPatientId,
     });

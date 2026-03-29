@@ -1,5 +1,5 @@
-import { PatientNotificationsPanel } from "@/components/mediya/patient/patient-notifications-panel";
+import { redirect } from "next/navigation";
 
 export default function PatientNotificationsPage() {
-  return <PatientNotificationsPanel mode="page" />;
+  redirect("/paciente");
 }

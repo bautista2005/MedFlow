@@ -1,17 +1,11 @@
 import type {
   ChatbotContextMedication,
-  ChatbotContextRecentChat,
   ChatbotContextRequest,
   ChatbotContextSummary,
   PersistedChatbotExchange,
 } from "@/lib/chatbot/types";
 import { ACTIVE_PRESCRIPTION_REQUEST_STATUSES, type PrescriptionRequestStatus } from "@/lib/patient/types";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
-
-type PatientRow = {
-  patient_id: number;
-  name: string;
-};
 
 type DoctorLinkRow = {
   is_primary: boolean;
@@ -30,14 +24,6 @@ type DoctorLinkRow = {
 type MedicationRow = ChatbotContextMedication;
 
 type RequestRow = ChatbotContextRequest;
-
-type ChatRow = {
-  patient_chat_log_id: number;
-  message_user: string;
-  severity: ChatbotContextRecentChat["severity"];
-  risk_score: number;
-  created_at: string;
-};
 
 type WeeklyScheduleConfigRow = {
   weekly_schedule_config_id: number;
@@ -107,6 +93,63 @@ function buildPersistedContextSnapshot(context: ChatbotContextSummary) {
   } satisfies PersistedChatbotExchange["context_snapshot"];
 }
 
+export type PatientChatRoutingContext = {
+  patient_name: string;
+  active_doctor_id: number | null;
+  primary_doctor_name: string | null;
+};
+
+export async function loadPatientChatRoutingContext(
+  patientId: number,
+): Promise<PatientChatRoutingContext> {
+  const supabase = createAdminSupabaseClient();
+  const [{ data: patient, error: patientError }, { data: doctorLinks, error: doctorError }] =
+    await Promise.all([
+      supabase.from("patients").select("patient_id, name").eq("patient_id", patientId).maybeSingle(),
+      supabase
+        .from("patient_doctors")
+        .select("is_primary, active_doctors(active_doctor_id, name)")
+        .eq("patient_id", patientId)
+        .order("is_primary", { ascending: false }),
+    ]);
+
+  if (patientError || doctorError || !patient) {
+    throw new Error("No se pudo cargar el destinatario del chatbot.");
+  }
+
+  const primaryLink = ((doctorLinks ?? []) as DoctorLinkRow[]).find((link) => link.is_primary);
+  const primaryDoctor = normalizeRelation(primaryLink?.active_doctors ?? null);
+
+  return {
+    patient_name: patient.name,
+    active_doctor_id: primaryDoctor?.active_doctor_id ?? null,
+    primary_doctor_name: primaryDoctor?.name ?? null,
+  };
+}
+
+export function buildEmptyPatientChatContextSnapshot(input: {
+  patientName: string;
+  primaryDoctorName: string | null;
+}): PersistedChatbotExchange["context_snapshot"] {
+  return {
+    patient_name: input.patientName,
+    primary_doctor_name: input.primaryDoctorName,
+    active_medications_count: 0,
+    active_medication_names: [],
+    recent_requests: {
+      total: 0,
+      statuses: [],
+    },
+    adherence_last_7_days: {
+      scheduled: 0,
+      taken: 0,
+      taken_late: 0,
+      missed: 0,
+      adherence_ratio: null,
+    },
+  };
+}
+
 export async function loadPatientChatbotContext(patientId: number): Promise<ChatbotContextSummary> {
   const supabase = createAdminSupabaseClient();
   const last7Days = getIsoDateDaysAgo(6);
@@ -116,7 +159,6 @@ export async function loadPatientChatbotContext(patientId: number): Promise<Chat
     { data: doctorLinks, error: doctorError },
     { data: medications, error: medicationsError },
     { data: requests, error: requestsError },
-    { data: recentChats, error: chatsError },
     { data: scheduleConfigs, error: configsError },
     { data: scheduleLogs, error: logsError },
   ] = await Promise.all([
@@ -139,12 +181,6 @@ export async function loadPatientChatbotContext(patientId: number): Promise<Chat
       .order("requested_at", { ascending: false })
       .limit(5),
     supabase
-      .from("patient_chat_logs")
-      .select("patient_chat_log_id, message_user, severity, risk_score, created_at")
-      .eq("patient_id", patientId)
-      .order("created_at", { ascending: false })
-      .limit(5),
-    supabase
       .from("weekly_schedule_configs")
       .select("weekly_schedule_config_id, patient_medication_id, days_of_week, intake_slots")
       .eq("patient_id", patientId)
@@ -161,7 +197,6 @@ export async function loadPatientChatbotContext(patientId: number): Promise<Chat
     doctorError ||
     medicationsError ||
     requestsError ||
-    chatsError ||
     configsError ||
     logsError ||
     !patient
@@ -209,13 +244,7 @@ export async function loadPatientChatbotContext(patientId: number): Promise<Chat
       requested_at: request.requested_at,
       medication_name_snapshot: request.medication_name_snapshot,
     })),
-    recent_chats: ((recentChats ?? []) as ChatRow[]).map((chat) => ({
-      patient_chat_log_id: chat.patient_chat_log_id,
-      message_user: chat.message_user,
-      severity: chat.severity,
-      risk_score: chat.risk_score,
-      created_at: chat.created_at,
-    })),
+    recent_chats: [],
     adherence_last_7_days: {
       scheduled,
       taken: logSummary.taken,

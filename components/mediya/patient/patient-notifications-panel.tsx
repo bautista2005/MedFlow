@@ -1,12 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BellRing } from "lucide-react";
+import { Bell } from "lucide-react";
 
-import type {
-  PatientNotificationListResponse,
-  PatientNotificationStatusFilter,
-} from "@/lib/patient/types";
+import type { PatientNotificationListResponse } from "@/lib/patient/types";
 import {
   getPatientNotificationPreview,
   listPatientNotifications,
@@ -15,31 +12,23 @@ import {
 } from "@/services/patient/patient-service";
 import { PatientNotificationCenter } from "@/components/mediya/patient/patient-notification-center";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 
 type PatientNotificationsPanelProps = {
   mode?: "dashboard" | "page";
-};
-
-const statusLabels: Record<PatientNotificationStatusFilter, string> = {
-  all: "Todas",
-  unread: "Sin leer",
-  read: "Leidas",
 };
 
 export function PatientNotificationsPanel({
   mode = "dashboard",
 }: PatientNotificationsPanelProps) {
   const [data, setData] = useState<PatientNotificationListResponse | null>(null);
-  const [statusFilter, setStatusFilter] = useState<PatientNotificationStatusFilter>("all");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [markingNotificationId, setMarkingNotificationId] = useState<number | null>(null);
   const [isMarkingAll, setIsMarkingAll] = useState(false);
   const isPage = mode === "page";
 
-  async function refresh(nextStatus = statusFilter) {
+  async function refresh() {
     const result = isPage
-      ? await listPatientNotifications({ status: nextStatus })
+      ? await listPatientNotifications({ status: "unread" })
       : await getPatientNotificationPreview();
 
     setData(result);
@@ -49,7 +38,7 @@ export function PatientNotificationsPanel({
     let cancelled = false;
 
     const request = isPage
-      ? listPatientNotifications({ status: statusFilter })
+      ? listPatientNotifications({ status: "unread" })
       : getPatientNotificationPreview();
 
     void request
@@ -73,7 +62,7 @@ export function PatientNotificationsPanel({
     return () => {
       cancelled = true;
     };
-  }, [isPage, statusFilter]);
+  }, [isPage]);
 
   async function handleMarkAsRead(notificationId: number) {
     setMarkingNotificationId(notificationId);
@@ -128,8 +117,8 @@ export function PatientNotificationsPanel({
                 </p>
               </div>
             </div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-[16px] border border-emerald-100 bg-white/90 text-emerald-700">
-              <BellRing className="h-5 w-5" />
+            <div className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-[0_10px_22px_rgba(15,23,42,0.06)]">
+              <Bell className="h-5 w-5" />
             </div>
           </div>
         </section>
@@ -138,24 +127,6 @@ export function PatientNotificationsPanel({
       {errorMessage ? (
         <div className="rounded-[1.5rem] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {errorMessage}
-        </div>
-      ) : null}
-
-      {isPage ? (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap gap-2">
-            {(["all", "unread", "read"] as const).map((filter) => (
-              <Button
-                key={filter}
-                type="button"
-                size="sm"
-                variant={statusFilter === filter ? "default" : "outline"}
-                onClick={() => setStatusFilter(filter)}
-              >
-                {statusLabels[filter]}
-              </Button>
-            ))}
-          </div>
         </div>
       ) : null}
 
@@ -169,13 +140,13 @@ export function PatientNotificationsPanel({
         title={isPage ? "Todas tus notificaciones" : "Resumen reciente"}
         description={
           isPage
-            ? "El feed unifica eventos de recetas, calendario, sistema y observaciones clinicas."
-            : "Las tres notificaciones mas recientes aparecen aca para que revises lo importante rapido."
+            ? "Aca ves solo las notificaciones pendientes para que desaparezcan al marcarlas como leidas."
+            : "Las tres notificaciones pendientes mas recientes aparecen aca para que revises lo importante rapido."
         }
         emptyMessage={
           isPage
-            ? "Todavia no tenes notificaciones registradas para este filtro."
-            : "Cuando se generen nuevos eventos, vas a ver un resumen breve en este bloque."
+            ? "No tenes notificaciones pendientes."
+            : "Cuando se generen nuevos eventos pendientes, vas a ver un resumen breve en este bloque."
         }
         historyHref={!isPage ? "/paciente/notificaciones" : null}
         historyLabel="Ver todas las notificaciones"

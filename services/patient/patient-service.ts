@@ -6,13 +6,12 @@ import type {
   UpsertPatientCalendarLogResponse,
 } from "@/lib/calendar/types";
 import type {
-  CreatePatientRequestPayload,
   PatientChatHistoryResponse,
+  CreatePatientRequestPayload,
   PatientChatMessagePayload,
   PatientChatMessageResponse,
   PatientDashboardResponse,
   PatientNotificationListResponse,
-  PatientNotificationSummary,
   PatientNotificationStatusFilter,
   UpdatePatientAlternativePharmacyPayload,
 } from "@/lib/patient/types";
@@ -65,9 +64,9 @@ export function sendPatientChatMessage(payload: PatientChatMessagePayload) {
   });
 }
 
-export function listPatientChatHistory(limit = 20) {
-  const search = new URLSearchParams({ limit: String(limit) }).toString();
-  return patientFetch<PatientChatHistoryResponse>(`/api/patient/chatbot/history?${search}`);
+export function getPatientChatHistory(limit = 20) {
+  const search = `?limit=${encodeURIComponent(String(limit))}`;
+  return patientFetch<PatientChatHistoryResponse>(`/api/patient/chatbot/history${search}`);
 }
 
 export function getPatientWeeklyCalendar(weekStart?: string) {
@@ -137,7 +136,7 @@ export function listPatientNotifications(options: ListPatientNotificationsOption
 }
 
 export function getPatientNotificationPreview() {
-  return listPatientNotifications({ limit: 3 });
+  return listPatientNotifications({ status: "unread", limit: 3 });
 }
 
 export async function getPatientNotificationBadgeSummary() {
@@ -152,7 +151,7 @@ export async function getPatientNotificationBadgeSummary() {
 }
 
 export function markPatientNotificationAsRead(notificationId: number) {
-  return patientFetch<{ notification: PatientNotificationSummary; message: string }>(
+  return patientFetch<{ deleted_notification_id: number; message: string }>(
     `/api/patient/notifications/${notificationId}`,
     {
       method: "PATCH",
