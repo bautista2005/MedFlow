@@ -5,8 +5,11 @@ import { useEffect, useState } from "react";
 import type { DoctorRequestsResponse } from "@/lib/doctor/types";
 import {
   listDoctorRequests,
+  updateDoctorRequestPharmacyStatus,
+  updateDoctorRequestNote,
   uploadDoctorPrescriptionFile,
 } from "@/services/doctor/doctor-service";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -20,10 +23,23 @@ export function RequestsPanel() {
   const [data, setData] = useState<DoctorRequestsResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [uploadingId, setUploadingId] = useState<number | null>(null);
+  const [noteDrafts, setNoteDrafts] = useState<Record<number, string>>({});
+  const [savingNoteId, setSavingNoteId] = useState<number | null>(null);
+  const [updatingPharmacyRequestId, setUpdatingPharmacyRequestId] = useState<number | null>(null);
 
   async function refresh() {
     const result = await listDoctorRequests();
     setData(result);
+    setNoteDrafts((currentDrafts) => {
+      const nextDrafts: Record<number, string> = {};
+
+      for (const request of result.requests) {
+        nextDrafts[request.prescription_request_id] =
+          currentDrafts[request.prescription_request_id] ?? request.doctor_note ?? "";
+      }
+
+      return nextDrafts;
+    });
   }
 
   useEffect(() => {
@@ -56,11 +72,58 @@ export function RequestsPanel() {
     }
   }
 
+  async function handleSaveNote(requestId: number) {
+    const note = noteDrafts[requestId]?.trim() ?? "";
+
+    if (!note) {
+      setErrorMessage("Ingresa una observacion antes de guardarla.");
+      return;
+    }
+
+    setSavingNoteId(requestId);
+    setErrorMessage(null);
+
+    try {
+      await updateDoctorRequestNote(requestId, { doctor_note: note });
+      await refresh();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "No se pudo guardar la observacion.",
+      );
+    } finally {
+      setSavingNoteId(null);
+    }
+  }
+
+  async function handleUpdatePharmacyStatus(
+    requestId: number,
+    status: "pharmacy_checking" | "awaiting_alternative_pharmacy" | "ready_for_pickup",
+  ) {
+    setUpdatingPharmacyRequestId(requestId);
+    setErrorMessage(null);
+
+    try {
+      await updateDoctorRequestPharmacyStatus(requestId, { status });
+      await refresh();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "No se pudo actualizar el estado de farmacia.",
+      );
+    } finally {
+      setUpdatingPharmacyRequestId(null);
+    }
+  }
+
   const statusLabelMap: Record<DoctorRequestsResponse["requests"][number]["status"], string> = {
     pending: "Pendiente",
     reviewed: "En revisión",
-    accepted: "Aceptado",
-    rejected: "Rechazado",
+    prescription_uploaded: "Receta cargada",
+    pharmacy_checking: "Consultando farmacia",
+    no_stock_preferred: "Sin stock",
+    awaiting_alternative_pharmacy: "Esperando farmacia alternativa",
+    ready_for_pickup: "Listo para retirar",
     cancelled: "Cancelado",
   };
 
@@ -115,6 +178,13 @@ export function RequestsPanel() {
                   <p>{request.medication_name}</p>
                   <p>Pedido: {new Date(request.requested_at).toLocaleString("es-AR")}</p>
                   <p>
+                    {request.assigned_pharmacy
+                      ? `Farmacia actual: ${request.assigned_pharmacy.name}`
+                      : "Sin farmacia asignada"}
+                  </p>
+                  {request.patient_note ? <p>Observacion del paciente: {request.patient_note}</p> : null}
+                  {request.doctor_note ? <p>Observacion medica: {request.doctor_note}</p> : null}
+                  <p>
                     {request.current_file
                       ? `Receta actual: ${request.current_file.original_filename}`
                       : "Sin receta subida"}
@@ -123,6 +193,30 @@ export function RequestsPanel() {
                 <div className="space-y-2">
                   {request.status === "pending" || request.status === "reviewed" ? (
                     <>
+                      <textarea
+                        value={noteDrafts[request.prescription_request_id] ?? ""}
+                        onChange={(event) =>
+                          setNoteDrafts((currentDrafts) => ({
+                            ...currentDrafts,
+                            [request.prescription_request_id]: event.target.value,
+                          }))
+                        }
+                        rows={3}
+                        maxLength={600}
+                        placeholder="Agregar observacion para el paciente"
+                        className="w-full min-w-[240px] rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.04)] outline-none transition focus:border-blue-200 focus:bg-white"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleSaveNote(request.prescription_request_id)}
+                        disabled={savingNoteId === request.prescription_request_id}
+                      >
+                        {savingNoteId === request.prescription_request_id
+                          ? "Guardando..."
+                          : "Guardar observacion"}
+                      </Button>
                       <input
                         id={`file-${request.prescription_request_id}`}
                         type="file"
@@ -138,9 +232,57 @@ export function RequestsPanel() {
                           : "La carga se procesa apenas seleccionas el archivo."}
                       </p>
                     </>
+                  ) : request.status === "prescription_uploaded" ||
+                    request.status === "pharmacy_checking" ||
+                    request.status === "no_stock_preferred" ||
+                    request.status === "awaiting_alternative_pharmacy" ? (
+                    <div className="flex flex-col gap-2">
+                      {(request.status === "prescription_uploaded" ||
+                        request.status === "pharmacy_checking") && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            handleUpdatePharmacyStatus(
+                              request.prescription_request_id,
+                              "awaiting_alternative_pharmacy",
+                            )
+                          }
+                          disabled={updatingPharmacyRequestId === request.prescription_request_id}
+                        >
+                          {updatingPharmacyRequestId === request.prescription_request_id
+                            ? "Actualizando..."
+                            : "Informar falta de stock"}
+                        </Button>
+                      )}
+                      {(request.status === "prescription_uploaded" ||
+                        request.status === "pharmacy_checking") && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() =>
+                            handleUpdatePharmacyStatus(
+                              request.prescription_request_id,
+                              "ready_for_pickup",
+                            )
+                          }
+                          disabled={updatingPharmacyRequestId === request.prescription_request_id}
+                        >
+                          {updatingPharmacyRequestId === request.prescription_request_id
+                            ? "Actualizando..."
+                            : "Marcar listo para retirar"}
+                        </Button>
+                      )}
+                      {request.status === "awaiting_alternative_pharmacy" ? (
+                        <p className="text-xs text-slate-500">
+                          Esperando que el paciente elija otra farmacia.
+                        </p>
+                      ) : null}
+                    </div>
                   ) : (
                     <p className="text-xs text-slate-500">
-                      Este pedido ya fue resuelto.
+                      Este pedido ya llego a una etapa final.
                     </p>
                   )}
                 </div>

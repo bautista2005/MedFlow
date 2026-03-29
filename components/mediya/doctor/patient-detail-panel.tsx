@@ -28,16 +28,22 @@ type PatientDetailPanelProps = {
 const requestStatusLabel: Record<PatientDetail["requests"][number]["status"], string> = {
   pending: "Pendiente",
   reviewed: "En revisión",
-  accepted: "Aceptado",
-  rejected: "Rechazado",
+  prescription_uploaded: "Receta cargada",
+  pharmacy_checking: "Consultando farmacia",
+  no_stock_preferred: "Sin stock",
+  awaiting_alternative_pharmacy: "Esperando farmacia alternativa",
+  ready_for_pickup: "Listo para retirar",
   cancelled: "Cancelado",
 };
 
 const requestStatusClassName: Record<PatientDetail["requests"][number]["status"], string> = {
   pending: "border-blue-200 bg-blue-600 text-white",
   reviewed: "border-blue-200 bg-blue-600 text-white",
-  accepted: "border-emerald-200 bg-emerald-50 text-emerald-900",
-  rejected: "border-rose-200 bg-rose-50 text-rose-900",
+  prescription_uploaded: "border-violet-200 bg-violet-50 text-violet-900",
+  pharmacy_checking: "border-amber-200 bg-amber-50 text-amber-900",
+  no_stock_preferred: "border-rose-200 bg-rose-50 text-rose-900",
+  awaiting_alternative_pharmacy: "border-amber-200 bg-amber-50 text-amber-900",
+  ready_for_pickup: "border-emerald-200 bg-emerald-50 text-emerald-900",
   cancelled: "border-slate-200 bg-slate-100 text-slate-600",
 };
 
@@ -136,13 +142,13 @@ export function PatientDetailPanel({ patientId }: PatientDetailPanelProps) {
 
   const pendingRequests =
     data?.requests.filter(
-      (request) => request.status === "pending" || request.status === "reviewed",
+      (request) =>
+        request.status !== "ready_for_pickup" && request.status !== "cancelled",
     ) ?? [];
   const completedRequests =
     data?.requests.filter(
       (request) =>
-        request.status === "accepted" ||
-        request.status === "rejected" ||
+        request.status === "ready_for_pickup" ||
         request.status === "cancelled",
     ) ?? [];
 

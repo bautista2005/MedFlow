@@ -18,8 +18,11 @@ type DashboardData = {
 const requestStatusLabel: Record<DoctorRequestsResponse["requests"][number]["status"], string> = {
   pending: "Pedido nuevo",
   reviewed: "En revisión",
-  accepted: "Aceptado",
-  rejected: "Rechazado",
+  prescription_uploaded: "Receta cargada",
+  pharmacy_checking: "Consultando farmacia",
+  no_stock_preferred: "Sin stock",
+  awaiting_alternative_pharmacy: "Esperando farmacia alternativa",
+  ready_for_pickup: "Listo para retirar",
   cancelled: "Cancelado",
 };
 
@@ -30,7 +33,8 @@ function getPendingRequestCount(
   return requests.filter(
     (request) =>
       request.patient_id === patientId &&
-      (request.status === "pending" || request.status === "reviewed"),
+      request.status !== "ready_for_pickup" &&
+      request.status !== "cancelled",
   ).length;
 }
 
@@ -71,7 +75,7 @@ export function DoctorDashboardOverview() {
   const pendingRequests = useMemo(
     () =>
       (data.requests?.requests ?? []).filter(
-        (request) => request.status === "pending" || request.status === "reviewed",
+        (request) => request.status !== "ready_for_pickup" && request.status !== "cancelled",
       ),
     [data.requests],
   );

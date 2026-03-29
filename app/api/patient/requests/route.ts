@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 
 import { PatientSessionError, requireAuthenticatedPatient } from "@/lib/auth/patient-session";
 import { calculateMedicationStatus } from "@/lib/patient/medication-calculations";
-import type { CreatePatientRequestPayload, PrescriptionRequestStatus } from "@/lib/patient/types";
+import { createPrescriptionRequestNotification } from "@/lib/patient/notifications";
+import {
+  ACTIVE_PRESCRIPTION_REQUEST_STATUSES,
+  type CreatePatientRequestPayload,
+  type PrescriptionRequestStatus,
+} from "@/lib/patient/types";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -57,7 +62,7 @@ export async function POST(request: Request) {
       .select("prescription_request_id, status")
       .eq("patient_id", patient.patientId)
       .eq("patient_medication_id", patientMedicationId)
-      .in("status", ["pending", "reviewed"] satisfies PrescriptionRequestStatus[])
+      .in("status", ACTIVE_PRESCRIPTION_REQUEST_STATUSES satisfies PrescriptionRequestStatus[])
       .maybeSingle();
 
     if (openRequestError) {
@@ -98,6 +103,7 @@ export async function POST(request: Request) {
         active_doctor_id: medication.active_doctor_id,
         patient_medication_id: medication.patient_medication_id,
         preferred_pharmacy_id: patient.preferredPharmacyId,
+        assigned_pharmacy_id: patient.preferredPharmacyId,
         status: "pending" satisfies PrescriptionRequestStatus,
         patient_note: normalizePatientNote(payload.patient_note),
         medication_name_snapshot: medication.medication_name,
@@ -113,6 +119,28 @@ export async function POST(request: Request) {
         { status: 500 },
       );
     }
+
+    await createPrescriptionRequestNotification({
+      type: "prescription_request_created",
+      patientId: patient.patientId,
+      activeDoctorId: medication.active_doctor_id,
+      patientMedicationId: medication.patient_medication_id,
+      prescriptionRequestId: insertedRequest.prescription_request_id,
+      medicationName: medication.medication_name,
+      preferredPharmacyId: patient.preferredPharmacyId,
+      assignedPharmacyId: patient.preferredPharmacyId,
+    });
+
+    await createPrescriptionRequestNotification({
+      type: "prescription_request_waiting_doctor",
+      patientId: patient.patientId,
+      activeDoctorId: medication.active_doctor_id,
+      patientMedicationId: medication.patient_medication_id,
+      prescriptionRequestId: insertedRequest.prescription_request_id,
+      medicationName: medication.medication_name,
+      preferredPharmacyId: patient.preferredPharmacyId,
+      assignedPharmacyId: patient.preferredPharmacyId,
+    });
 
     return NextResponse.json({
       prescription_request_id: insertedRequest.prescription_request_id,

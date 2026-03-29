@@ -6,6 +6,7 @@ import type {
   WeeklyScheduleSlot,
 } from "@/lib/calendar/types";
 import { getIsoWeekday, isIsoDateString, normalizeWeeklyScheduleSummary } from "@/lib/calendar/utils";
+import { createCalendarNotification } from "@/lib/patient/notifications";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 
 type WeeklyScheduleConfigRecord = {
@@ -19,6 +20,14 @@ type WeeklyScheduleConfigRecord = {
   days_of_week: number[] | null;
   intake_slots: unknown;
   notes: string | null;
+  patient_medications:
+    | {
+        medication_name: string;
+      }
+    | {
+        medication_name: string;
+      }[]
+    | null;
 };
 
 type WeeklyScheduleLogRecord = {
@@ -111,6 +120,27 @@ function findMatchingSlot(slots: WeeklyScheduleSlot[], slotKey: string) {
   return slots.find((slot) => slot.slot_key === slotKey) ?? null;
 }
 
+function normalizeMedicationName(
+  value:
+    | {
+        medication_name: string;
+      }
+    | {
+        medication_name: string;
+      }[]
+    | null,
+) {
+  if (!value) {
+    return null;
+  }
+
+  if (Array.isArray(value)) {
+    return value[0]?.medication_name ?? null;
+  }
+
+  return value.medication_name;
+}
+
 function mapLogSummary(record: WeeklyScheduleLogRecord): WeeklyScheduleLogSummary {
   return {
     weekly_schedule_log_id: record.weekly_schedule_log_id,
@@ -144,7 +174,7 @@ export async function upsertPatientCalendarLog({
   const { data: configRecord, error: configError } = await supabase
     .from("weekly_schedule_configs")
     .select(
-      "weekly_schedule_config_id, patient_medication_id, patient_id, active_doctor_id, is_enabled, schedule_start_date, schedule_end_date, days_of_week, intake_slots, notes",
+      "weekly_schedule_config_id, patient_medication_id, patient_id, active_doctor_id, is_enabled, schedule_start_date, schedule_end_date, days_of_week, intake_slots, notes, patient_medications(medication_name)",
     )
     .eq("weekly_schedule_config_id", normalizedPayload.weekly_schedule_config_id)
     .maybeSingle();
@@ -252,6 +282,23 @@ export async function upsertPatientCalendarLog({
 
   if (saveError || !savedLog) {
     throw new Error("No se pudo guardar la adherencia del calendario.");
+  }
+
+  if (normalizedPayload.status === "missed") {
+    await createCalendarNotification({
+      type: "calendar_missed_dose",
+      reason: "manual_missed",
+      patientId: configRecord.patient_id,
+      activeDoctorId: configRecord.active_doctor_id,
+      patientMedicationId: configRecord.patient_medication_id,
+      weeklyScheduleConfigId: configRecord.weekly_schedule_config_id,
+      medicationName:
+        normalizeMedicationName(configRecord.patient_medications) ?? "tu medicacion",
+      scheduledForDate: normalizedPayload.scheduled_for_date,
+      slotKey: normalizedPayload.slot_key,
+      slotLabel: slot.label,
+      scheduledTime: slot.time,
+    });
   }
 
   return {

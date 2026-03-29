@@ -4,9 +4,42 @@ export type PatientAccountStatus = "invited" | "active" | "disabled";
 export type PrescriptionRequestStatus =
   | "pending"
   | "reviewed"
-  | "accepted"
-  | "rejected"
+  | "prescription_uploaded"
+  | "pharmacy_checking"
+  | "no_stock_preferred"
+  | "awaiting_alternative_pharmacy"
+  | "ready_for_pickup"
   | "cancelled";
+export const ACTIVE_PRESCRIPTION_REQUEST_STATUSES: PrescriptionRequestStatus[] = [
+  "pending",
+  "reviewed",
+  "prescription_uploaded",
+  "pharmacy_checking",
+  "no_stock_preferred",
+  "awaiting_alternative_pharmacy",
+];
+export type PatientNotificationCategory =
+  | "calendar"
+  | "prescription"
+  | "doctor_message"
+  | "system";
+export type PatientNotificationType =
+  | "calendar_dose_reminder"
+  | "calendar_missed_dose"
+  | "prescription_request_created"
+  | "prescription_request_waiting_doctor"
+  | "prescription_file_uploaded"
+  | "prescription_request_pharmacy_checking"
+  | "prescription_request_no_stock_preferred"
+  | "prescription_request_choose_alternative_pharmacy"
+  | "prescription_request_ready_for_pickup"
+  | "doctor_observation_created"
+  | "medication_running_low"
+  | "follow_up_reminder";
+export type PatientNotificationStatus = "unread" | "read";
+export type PatientNotificationPriority = "low" | "normal" | "high";
+export type PatientNotificationSource = "system" | "doctor" | "pharmacy" | "calendar";
+export type PatientNotificationStatusFilter = PatientNotificationStatus | "all";
 export type MedicationStatusTone = "success" | "warning" | "danger" | "neutral";
 export type MedicationBlockedReason =
   | "missing_data"
@@ -25,6 +58,18 @@ export type DoctorSummary = {
   name: string;
   email: string;
   organization: string;
+};
+
+export type DoctorMessageNotificationKind = "observation";
+
+export type DoctorMessageNotificationMetadata = {
+  doctor_id: number;
+  patient_id: number;
+  related_prescription_id?: number;
+  related_treatment_id?: number;
+  message_kind: DoctorMessageNotificationKind;
+  observation: string;
+  medication_name?: string;
 };
 
 export type PrescriptionFileSummary = {
@@ -55,7 +100,35 @@ export type PatientRequestSummary = {
   patient_note: string | null;
   doctor_note: string | null;
   preferred_pharmacy: PharmacySummary | null;
+  assigned_pharmacy: PharmacySummary | null;
   current_file: PrescriptionFileSummary | null;
+};
+
+export type PatientNotificationSummary = {
+  patient_notification_id: number;
+  patient_id: number;
+  active_doctor_id: number | null;
+  patient_medication_id: number | null;
+  prescription_request_id: number | null;
+  weekly_schedule_config_id: number | null;
+  source: PatientNotificationSource;
+  category: PatientNotificationCategory;
+  type: PatientNotificationType;
+  title: string;
+  message: string;
+  status: PatientNotificationStatus;
+  priority: PatientNotificationPriority;
+  action_url: string | null;
+  metadata: Record<string, unknown>;
+  scheduled_for: string | null;
+  read_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PatientNotificationListResponse = {
+  notifications: PatientNotificationSummary[];
+  unread_count: number;
 };
 
 export type MedicationCalculation = {
@@ -96,9 +169,55 @@ export type PatientDashboardResponse = {
   patient: PatientProfile;
   medications: PatientMedicationSummary[];
   requests: PatientRequestSummary[];
+  pharmacies: PharmacySummary[];
 };
 
 export type CreatePatientRequestPayload = {
   patient_medication_id: number;
   patient_note?: string;
 };
+
+export type UpdatePatientAlternativePharmacyPayload = {
+  pharmacy_id: number;
+};
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+export function getDoctorMessageNotificationMetadata(
+  metadata: Record<string, unknown>,
+): DoctorMessageNotificationMetadata | null {
+  const doctorId = metadata.doctor_id;
+  const patientId = metadata.patient_id;
+  const messageKind = metadata.message_kind;
+  const observation = metadata.observation;
+
+  if (
+    !isPositiveInteger(doctorId) ||
+    !isPositiveInteger(patientId) ||
+    messageKind !== "observation" ||
+    typeof observation !== "string" ||
+    observation.trim().length === 0
+  ) {
+    return null;
+  }
+
+  const relatedPrescriptionId = metadata.related_prescription_id;
+  const relatedTreatmentId = metadata.related_treatment_id;
+  const medicationName = metadata.medication_name;
+
+  return {
+    doctor_id: doctorId,
+    patient_id: patientId,
+    ...(isPositiveInteger(relatedPrescriptionId)
+      ? { related_prescription_id: relatedPrescriptionId }
+      : {}),
+    ...(isPositiveInteger(relatedTreatmentId) ? { related_treatment_id: relatedTreatmentId } : {}),
+    message_kind: "observation",
+    observation,
+    ...(typeof medicationName === "string" && medicationName.trim().length > 0
+      ? { medication_name: medicationName }
+      : {}),
+  };
+}

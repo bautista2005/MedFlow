@@ -1,3 +1,4 @@
+import type { PrescriptionRequestStatus } from "@/lib/patient/types";
 import type { WeeklyScheduleConfigSummary, WeeklyScheduleInput } from "@/lib/calendar/types";
 
 export type PharmacySummary = {
@@ -48,12 +49,13 @@ export type PrescriptionRequestSummary = {
   patient_id: number;
   patient_name: string;
   medication_name: string;
-  status: "pending" | "reviewed" | "accepted" | "rejected" | "cancelled";
+  status: PrescriptionRequestStatus;
   requested_at: string;
   resolved_at: string | null;
   patient_note: string | null;
   doctor_note: string | null;
   preferred_pharmacy: PharmacySummary | null;
+  assigned_pharmacy: PharmacySummary | null;
   current_file: PrescriptionFileSummary | null;
 };
 
@@ -118,6 +120,14 @@ export type PatientsIndexResponse = {
 
 export type DoctorRequestsResponse = {
   requests: PrescriptionRequestSummary[];
+};
+
+export type UpdateDoctorRequestNotePayload = {
+  doctor_note: string;
+};
+
+export type UpdateDoctorRequestPharmacyStatusPayload = {
+  status: "pharmacy_checking" | "awaiting_alternative_pharmacy" | "ready_for_pickup";
 };
 
 export type DoctorProfileResponse = {

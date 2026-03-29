@@ -26,7 +26,21 @@ type RequestRow = {
         name: string;
       }[]
     | null;
-  pharmacies:
+  preferred_pharmacy:
+    | {
+        pharmacy_id: number;
+        name: string;
+        zone: string | null;
+        city: string | null;
+      }
+    | {
+        pharmacy_id: number;
+        name: string;
+        zone: string | null;
+        city: string | null;
+      }[]
+    | null;
+  assigned_pharmacy:
     | {
         pharmacy_id: number;
         name: string;
@@ -57,7 +71,7 @@ export async function GET(request: Request) {
     const { data: rows, error } = await supabase
       .from("prescription_requests")
       .select(
-        "prescription_request_id, patient_id, status, requested_at, resolved_at, patient_note, doctor_note, medication_name_snapshot, patients(name), pharmacies(pharmacy_id, name, zone, city)",
+        "prescription_request_id, patient_id, status, requested_at, resolved_at, patient_note, doctor_note, medication_name_snapshot, patients(name), preferred_pharmacy:pharmacies!prescription_requests_preferred_pharmacy_id_fkey(pharmacy_id, name, zone, city), assigned_pharmacy:pharmacies!prescription_requests_assigned_pharmacy_id_fkey(pharmacy_id, name, zone, city)",
       )
       .eq("active_doctor_id", doctor.activeDoctorId)
       .order("requested_at", { ascending: false });
@@ -107,7 +121,8 @@ export async function GET(request: Request) {
         resolved_at: row.resolved_at,
         patient_note: row.patient_note,
         doctor_note: row.doctor_note,
-        preferred_pharmacy: normalizeRelation(row.pharmacies),
+        preferred_pharmacy: normalizeRelation(row.preferred_pharmacy),
+        assigned_pharmacy: normalizeRelation(row.assigned_pharmacy),
         current_file: fileByRequestId.get(row.prescription_request_id) ?? null,
       })),
     });

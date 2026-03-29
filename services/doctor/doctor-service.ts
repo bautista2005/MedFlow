@@ -8,6 +8,8 @@ import type {
   DoctorRequestsResponse,
   PatientDetail,
   PatientsIndexResponse,
+  UpdateDoctorRequestPharmacyStatusPayload,
+  UpdateDoctorRequestNotePayload,
 } from "@/lib/doctor/types";
 
 async function getAccessToken() {
@@ -105,6 +107,38 @@ export function uploadDoctorPrescriptionFile(requestId: number, file: File) {
     {
       method: "POST",
       body: formData,
+    },
+  );
+}
+
+export function updateDoctorRequestNote(
+  requestId: number,
+  payload: UpdateDoctorRequestNotePayload,
+) {
+  return doctorFetch<{ message: string; doctor_note: string; status: string }>(
+    `/api/doctor/requests/${requestId}/note`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function updateDoctorRequestPharmacyStatus(
+  requestId: number,
+  payload: UpdateDoctorRequestPharmacyStatusPayload,
+) {
+  return doctorFetch<{ message: string; status: string }>(
+    `/api/doctor/requests/${requestId}/pharmacy-status`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
     },
   );
 }

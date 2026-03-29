@@ -1,26 +1,38 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ClipboardList, HeartPulse } from "lucide-react";
+import { BellRing, ClipboardList, HeartPulse } from "lucide-react";
 
 import type { CreatePatientRequestPayload, PatientDashboardResponse } from "@/lib/patient/types";
 import {
   createPatientRequest,
   getPatientDashboard,
+  getPatientNotificationBadgeSummary,
+  updatePatientAlternativePharmacy,
 } from "@/services/patient/patient-service";
 import { PatientEmptyState } from "@/components/mediya/patient/patient-empty-state";
+import { PatientNotificationsPanel } from "@/components/mediya/patient/patient-notifications-panel";
 import { PatientRequestTracker } from "@/components/mediya/patient/patient-request-tracker";
 import { PatientTreatmentCard } from "@/components/mediya/patient/patient-treatment-card";
 import { PatientWeeklyCalendar } from "@/components/mediya/patient/patient-weekly-calendar";
 
 export function PatientDashboard() {
   const [data, setData] = useState<PatientDashboardResponse | null>(null);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [requestingId, setRequestingId] = useState<number | null>(null);
+  const [updatingAlternativeRequestId, setUpdatingAlternativeRequestId] = useState<number | null>(
+    null,
+  );
 
   async function refresh() {
-    const result = await getPatientDashboard();
-    setData(result);
+    const [dashboardResult, notificationResult] = await Promise.all([
+      getPatientDashboard(),
+      getPatientNotificationBadgeSummary(),
+    ]);
+
+    setData(dashboardResult);
+    setUnreadNotificationCount(notificationResult.unread_count);
   }
 
   useEffect(() => {
@@ -44,6 +56,24 @@ export function PatientDashboard() {
       );
     } finally {
       setRequestingId(null);
+    }
+  }
+
+  async function handleChooseAlternativePharmacy(requestId: number, pharmacyId: number) {
+    setUpdatingAlternativeRequestId(requestId);
+    setErrorMessage(null);
+
+    try {
+      await updatePatientAlternativePharmacy(requestId, { pharmacy_id: pharmacyId });
+      await refresh();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "No se pudo actualizar la farmacia del pedido.",
+      );
+    } finally {
+      setUpdatingAlternativeRequestId(null);
     }
   }
 
@@ -100,6 +130,21 @@ export function PatientDashboard() {
               </div>
             </div>
           </div>
+          <div className="rounded-[20px] border border-slate-200 bg-white px-5 py-5 shadow-[0_16px_34px_rgba(15,23,42,0.05)]">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-[16px] bg-blue-50 text-blue-700">
+                <BellRing className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                  Alertas
+                </p>
+                <p className="text-2xl font-semibold text-slate-900">
+                  {unreadNotificationCount}
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -147,15 +192,24 @@ export function PatientDashboard() {
         </div>
 
         <div>
-          {data?.requests.length ? (
-            <PatientRequestTracker requests={data.requests} />
-          ) : (
-            <PatientEmptyState
-              title="Sin pedidos recientes"
-              description="Cuando solicites una receta, vas a poder seguir el estado desde este panel."
-              variant="requests"
-            />
-          )}
+          <div className="space-y-6">
+            <PatientNotificationsPanel mode="dashboard" />
+
+            {data?.requests.length ? (
+              <PatientRequestTracker
+                requests={data.requests}
+                pharmacies={data.pharmacies}
+                onChooseAlternativePharmacy={handleChooseAlternativePharmacy}
+                submittingRequestId={updatingAlternativeRequestId}
+              />
+            ) : (
+              <PatientEmptyState
+                title="Sin pedidos recientes"
+                description="Cuando solicites una receta, vas a poder seguir el estado desde este panel."
+                variant="requests"
+              />
+            )}
+          </div>
         </div>
       </section>
     </div>

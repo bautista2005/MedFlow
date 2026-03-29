@@ -8,6 +8,10 @@ import type {
 import type {
   CreatePatientRequestPayload,
   PatientDashboardResponse,
+  PatientNotificationListResponse,
+  PatientNotificationSummary,
+  PatientNotificationStatusFilter,
+  UpdatePatientAlternativePharmacyPayload,
 } from "@/lib/patient/types";
 
 async function getAccessToken() {
@@ -72,6 +76,77 @@ export function createPatientRequest(payload: CreatePatientRequestPayload) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function updatePatientAlternativePharmacy(
+  requestId: number,
+  payload: UpdatePatientAlternativePharmacyPayload,
+) {
+  return patientFetch<{ message: string; status: string }>(
+    `/api/patient/requests/${requestId}/alternative-pharmacy`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+type ListPatientNotificationsOptions = {
+  status?: PatientNotificationStatusFilter;
+  limit?: number;
+};
+
+export function listPatientNotifications(options: ListPatientNotificationsOptions = {}) {
+  const searchParams = new URLSearchParams();
+  const status = options.status ?? "all";
+
+  if (status !== "all") {
+    searchParams.set("status", status);
+  }
+
+  if (typeof options.limit === "number") {
+    searchParams.set("limit", String(options.limit));
+  }
+
+  const search = searchParams.size > 0 ? `?${searchParams.toString()}` : "";
+
+  return patientFetch<PatientNotificationListResponse>(`/api/patient/notifications${search}`);
+}
+
+export function getPatientNotificationPreview() {
+  return listPatientNotifications({ limit: 3 });
+}
+
+export async function getPatientNotificationBadgeSummary() {
+  const result = await listPatientNotifications({
+    status: "unread",
+    limit: 1,
+  });
+
+  return {
+    unread_count: result.unread_count,
+  };
+}
+
+export function markPatientNotificationAsRead(notificationId: number) {
+  return patientFetch<{ notification: PatientNotificationSummary; message: string }>(
+    `/api/patient/notifications/${notificationId}`,
+    {
+      method: "PATCH",
+    },
+  );
+}
+
+export function markAllPatientNotificationsAsRead() {
+  return patientFetch<{ updated_count: number; message: string }>(
+    "/api/patient/notifications/read-all",
+    {
+      method: "POST",
     },
   );
 }

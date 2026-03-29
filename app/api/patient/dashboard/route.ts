@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { PatientSessionError, requireAuthenticatedPatient } from "@/lib/auth/patient-session";
 import { normalizeWeeklyScheduleSummary } from "@/lib/calendar/utils";
 import { calculateMedicationStatus } from "@/lib/patient/medication-calculations";
+import { createSystemNotification } from "@/lib/patient/notifications";
+import { ACTIVE_PRESCRIPTION_REQUEST_STATUSES } from "@/lib/patient/types";
 import type {
   DoctorSummary,
   PatientDashboardResponse,
@@ -15,6 +17,8 @@ import type {
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
+
+const FOLLOW_UP_REMINDER_WINDOW_DAYS = 7;
 
 type WeeklyScheduleRelation = {
   weekly_schedule_config_id: number;
@@ -54,7 +58,11 @@ type RequestRow = {
   patient_note: string | null;
   doctor_note: string | null;
   medication_name_snapshot: string;
-  pharmacies:
+  preferred_pharmacy:
+    | PharmacySummary
+    | PharmacySummary[]
+    | null;
+  assigned_pharmacy:
     | PharmacySummary
     | PharmacySummary[]
     | null;
@@ -85,9 +93,87 @@ function mapRequest(
     resolved_at: row.resolved_at,
     patient_note: row.patient_note,
     doctor_note: row.doctor_note,
-    preferred_pharmacy: normalizeRelation(row.pharmacies),
+    preferred_pharmacy: normalizeRelation(row.preferred_pharmacy),
+    assigned_pharmacy: normalizeRelation(row.assigned_pharmacy),
     current_file: currentFile,
   };
+}
+
+function startOfUtcDay(value: Date) {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+}
+
+function diffDays(from: Date, to: Date) {
+  return Math.floor((to.getTime() - from.getTime()) / 86_400_000);
+}
+
+function isFollowUpReminderDue(nextConsultationAt: string | null) {
+  if (!nextConsultationAt) {
+    return false;
+  }
+
+  const consultationDate = new Date(nextConsultationAt);
+
+  if (Number.isNaN(consultationDate.getTime())) {
+    return false;
+  }
+
+  const remainingDays = diffDays(startOfUtcDay(new Date()), startOfUtcDay(consultationDate));
+  return remainingDays >= 0 && remainingDays <= FOLLOW_UP_REMINDER_WINDOW_DAYS;
+}
+
+async function emitPatientDashboardSystemNotifications(
+  patientId: number,
+  medications: PatientMedicationSummary[],
+) {
+  const writes = medications.flatMap((medication) => {
+    if (!medication.is_active) {
+      return [];
+    }
+
+    const operations: Promise<unknown>[] = [];
+
+    if (
+      medication.calculation.can_calculate &&
+      medication.calculation.can_request_refill &&
+      medication.calculation.status_tone !== "success" &&
+      !ACTIVE_PRESCRIPTION_REQUEST_STATUSES.includes(
+        medication.latest_request?.status ?? "cancelled",
+      )
+    ) {
+      operations.push(
+        createSystemNotification({
+          type: "medication_running_low",
+          patientId,
+          activeDoctorId: medication.doctor.active_doctor_id,
+          patientMedicationId: medication.patient_medication_id,
+          medicationName: medication.medication_name,
+          remainingDays: medication.calculation.remaining_days,
+        }),
+      );
+    }
+
+    if (isFollowUpReminderDue(medication.next_consultation_at)) {
+      operations.push(
+        createSystemNotification({
+          type: "follow_up_reminder",
+          patientId,
+          activeDoctorId: medication.doctor.active_doctor_id,
+          patientMedicationId: medication.patient_medication_id,
+          medicationName: medication.medication_name,
+          nextConsultationAt: medication.next_consultation_at,
+        }),
+      );
+    }
+
+    return operations;
+  });
+
+  if (writes.length === 0) {
+    return;
+  }
+
+  await Promise.allSettled(writes);
 }
 
 export async function GET(request: Request) {
@@ -95,7 +181,12 @@ export async function GET(request: Request) {
     const patient = await requireAuthenticatedPatient(request);
     const supabase = createAdminSupabaseClient();
 
-    const [{ data: patientRow, error: patientError }, { data: medicationRows, error: medicationsError }, { data: requestRows, error: requestsError }] =
+    const [
+      { data: patientRow, error: patientError },
+      { data: medicationRows, error: medicationsError },
+      { data: requestRows, error: requestsError },
+      { data: pharmacies, error: pharmaciesError },
+    ] =
       await Promise.all([
         supabase
           .from("patients")
@@ -115,13 +206,18 @@ export async function GET(request: Request) {
         supabase
           .from("prescription_requests")
           .select(
-            "prescription_request_id, patient_medication_id, status, requested_at, resolved_at, patient_note, doctor_note, medication_name_snapshot, pharmacies(pharmacy_id, name, zone, city)",
+            "prescription_request_id, patient_medication_id, status, requested_at, resolved_at, patient_note, doctor_note, medication_name_snapshot, preferred_pharmacy:pharmacies!prescription_requests_preferred_pharmacy_id_fkey(pharmacy_id, name, zone, city), assigned_pharmacy:pharmacies!prescription_requests_assigned_pharmacy_id_fkey(pharmacy_id, name, zone, city)",
           )
           .eq("patient_id", patient.patientId)
           .order("requested_at", { ascending: false }),
+        supabase
+          .from("pharmacies")
+          .select("pharmacy_id, name, zone, city")
+          .eq("is_active", true)
+          .order("name", { ascending: true }),
       ]);
 
-    if (patientError || medicationsError || requestsError || !patientRow) {
+    if (patientError || medicationsError || requestsError || pharmaciesError || !patientRow) {
       return NextResponse.json(
         { error: "No se pudo cargar el panel del paciente." },
         { status: 500 },
@@ -178,8 +274,9 @@ export async function GET(request: Request) {
       (row) => {
         const latestRequest =
           latestRequestByMedicationId.get(row.patient_medication_id) ?? null;
-        const hasOpenRequest =
-          latestRequest?.status === "pending" || latestRequest?.status === "reviewed";
+        const hasOpenRequest = ACTIVE_PRESCRIPTION_REQUEST_STATUSES.includes(
+          latestRequest?.status ?? "cancelled",
+        );
 
         return {
           patient_medication_id: row.patient_medication_id,
@@ -231,7 +328,10 @@ export async function GET(request: Request) {
       },
       medications,
       requests,
+      pharmacies: (pharmacies ?? []) as PharmacySummary[],
     };
+
+    await emitPatientDashboardSystemNotifications(patient.patientId, medications);
 
     return NextResponse.json(response);
   } catch (error) {
