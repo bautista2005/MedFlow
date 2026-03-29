@@ -4,7 +4,9 @@ Estos 3 medicos existen solo en approved_doctors.
 Todavia no tienen email ni password porque aun no se registraron en la app.
 El objetivo del test es  que el registro web cree el active_doctor a partir de uno de estos registros aprobados.
 
-CREDENCIALES PARA TESTEAR MEDICO -> dni: 28444555 contraseña: 12345678
+CREDENCIALES PARA TESTEAR MEDICO -> dni: 28444555 contraseña: 12345678, con esto ya se puede iniciar sesion
+en la pagina ya que este medico ya esta dado de alta y registrado
+
 1. full_name: Dra. Martina Quiroga
    dni: 30111222
    license_number: MN-145872
