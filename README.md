@@ -1,8 +1,8 @@
-## MedFlow
+## medflow
 
-MedFlow is a Next.js App Router application for doctor and patient workflows backed by Supabase Auth, Postgres, and Storage.
+medflow es una aplicación Next.js con App Router para flujos de médicos y pacientes, respaldada por Supabase Auth, Postgres y Storage.
 
-Current stack:
+Stack actual:
 
 - `next@16.2.1`
 - `react@19.2.4`
@@ -10,43 +10,43 @@ Current stack:
 - Tailwind CSS v4
 - Supabase (`@supabase/supabase-js`)
 
-## What the app includes
+## Qué incluye la aplicación
 
-- Public landing and auth screens
-- Doctor registration gated by pre-approved DNI
-- Login by email or DNI
-- Doctor panel for:
-  - patient creation
-  - treatment creation
-  - optional weekly medication schedules
-  - prescription request review
-  - doctor observations
-  - prescription file upload
-  - pharmacy workflow updates
-- Patient dashboard for:
-  - treatment tracking
-  - refill requests
-  - weekly medication calendar
-  - adherence logging
-  - notification center
+- Landing pública y pantallas de autenticación
+- Registro de médicos restringido por DNI preaprobado
+- Inicio de sesión por email o DNI
+- Panel de médico para:
+  - creación de pacientes
+  - creación de tratamientos
+  - horarios semanales opcionales de medicación
+  - revisión de solicitudes de receta
+  - observaciones médicas
+  - carga de archivos de receta
+  - actualizaciones del flujo con farmacia
+- Panel de paciente para:
+  - seguimiento de tratamientos
+  - solicitudes de reposición
+  - calendario semanal de medicación
+  - registro de adherencia
+  - centro de notificaciones
 
-## Prerequisites
+## Requisitos previos
 
-- Node.js 20 or newer
+- Node.js 20 o superior
 - npm
-- A Supabase project
+- Un proyecto de Supabase
 
-## 1. Install dependencies
+## 1. Instalar dependencias
 
-From the project root:
+Desde la raíz del proyecto:
 
 ```bash
 npm install
 ```
 
-## 2. Create the environment file
+## 2. Crear el archivo de entorno
 
-Create `.env.local` in the project root with:
+Creá `.env.local` en la raíz del proyecto con:
 
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
@@ -56,28 +56,28 @@ SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 CALENDAR_NOTIFICATIONS_CRON_SECRET=choose_a_long_random_secret
 ```
 
-Notes:
+Notas:
 
-- `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are required by browser and server clients.
-- `SUPABASE_SERVICE_ROLE_KEY` is required for server-side flows such as doctor registration, patient creation, protected data access, notifications, and file uploads.
-- `SUPABASE_URL` can be the same value as `NEXT_PUBLIC_SUPABASE_URL`.
-- `CALENDAR_NOTIFICATIONS_CRON_SECRET` is required only if you want to call the internal calendar notification endpoint:
+- `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY` son requeridas por los clientes de navegador y servidor.
+- `SUPABASE_SERVICE_ROLE_KEY` es requerida para flujos del lado servidor como registro de médicos, creación de pacientes, acceso a datos protegidos, notificaciones y carga de archivos.
+- `SUPABASE_URL` puede tener el mismo valor que `NEXT_PUBLIC_SUPABASE_URL`.
+- `CALENDAR_NOTIFICATIONS_CRON_SECRET` solo es requerida si querés llamar al endpoint interno de notificaciones del calendario:
   - `POST /api/internal/calendar/notifications`
-- If you prefer, the app also accepts `CRON_SECRET` instead of `CALENDAR_NOTIFICATIONS_CRON_SECRET`.
+- Si preferís, la app también acepta `CRON_SECRET` en lugar de `CALENDAR_NOTIFICATIONS_CRON_SECRET`.
 
-## 3. Set up Supabase
+## 3. Configurar Supabase
 
-This repository already includes the database definition under `supabase/migrations/` and seed data under `supabase/seed.sql`.
+Este repositorio ya incluye la definición de base de datos en `supabase/migrations/` y datos semilla en `supabase/seed.sql`.
 
-You need a Supabase project with:
+Necesitás un proyecto de Supabase con:
 
-- Auth enabled
-- Postgres database
-- Storage enabled
+- Auth habilitado
+- Base de datos Postgres
+- Storage habilitado
 
-### Apply the schema
+### Aplicar el esquema
 
-Run the SQL migrations in timestamp order from `supabase/migrations/`:
+Ejecutá las migraciones SQL en orden cronológico desde `supabase/migrations/`:
 
 1. `20260328120000_initial_mediiya_schema.sql`
 2. `20260328121500_enable_rls_and_harden_function.sql`
@@ -93,56 +93,56 @@ Run the SQL migrations in timestamp order from `supabase/migrations/`:
 12. `20260328233000_weekly_schedule_logs_taken_at.sql`
 13. `20260328234500_patient_notifications_mvp.sql`
 
-You can do this with the Supabase SQL Editor or your preferred database workflow.
+Podés hacerlo con el SQL Editor de Supabase o con el flujo de base de datos que prefieras.
 
-Important:
+Importante:
 
-- Run them in order.
-- The migrations create the required private storage bucket `prescriptions`.
-- RLS is enabled by the migrations.
-- The application currently uses the service-role key for most protected server-side operations.
+- Ejecutalas en orden.
+- Las migraciones crean el bucket privado requerido `prescriptions`.
+- RLS queda habilitado por las migraciones.
+- La aplicación actualmente usa la service-role key para la mayoría de las operaciones protegidas del lado servidor.
 
-### Seed base data
+### Cargar datos base
 
-After the migrations, execute the contents of `supabase/seed.sql`.
+Después de las migraciones, ejecutá el contenido de `supabase/seed.sql`.
 
-That seed inserts:
+Esa seed inserta:
 
-- 3 pre-approved doctors in `approved_doctors`
-- initial pharmacies in `pharmacies`
+- 3 médicos preaprobados en `approved_doctors`
+- farmacias iniciales en `pharmacies`
 
-It does not create auth users. Doctor auth users are created through the app registration flow.
+No crea usuarios de auth. Los usuarios médicos se crean desde el flujo de registro de la aplicación.
 
-## 4. Start the development server
+## 4. Iniciar el servidor de desarrollo
 
 ```bash
 npm run dev
 ```
 
-Then open:
+Después abrí:
 
 ```text
 http://localhost:3000
 ```
 
-## 5. Verify the local setup
+## 5. Verificar la configuración local
 
-After booting the app and loading the seed data, test this flow:
+Después de levantar la app y cargar la seed, probá este flujo:
 
-1. Open `/registro-medico`
-2. Register a doctor using one of the seeded DNI values:
+1. Abrí `/registro-medico`
+2. Registrá un médico usando uno de los DNI cargados por seed:
    - `30111222`
    - `28444555`
    - `32666777`
-3. Use any valid email, phone, and password during registration
-4. Log in through `/login`
-5. Enter the doctor panel and create a patient
-6. Create a treatment for that patient
-7. Log in as the patient using the credentials created by the doctor
+3. Usá cualquier email, teléfono y contraseña válidos durante el registro
+4. Iniciá sesión desde `/login`
+5. Entrá al panel del médico y creá un paciente
+6. Creá un tratamiento para ese paciente
+7. Iniciá sesión como paciente con las credenciales creadas por el médico
 
-The seeded doctors are also listed in [medicosParaTest.txt](./medicosParaTest.txt).
+Los médicos cargados por seed también están listados en [medicosParaTest.txt](./medicosParaTest.txt).
 
-## Available scripts
+## Scripts disponibles
 
 ```bash
 npm run dev
@@ -151,72 +151,72 @@ npm run start
 npm run lint
 ```
 
-## Main project structure
+## Estructura principal del proyecto
 
 ```text
-app/                    Next.js routes and API handlers
-components/             UI components
-services/               Client-side fetch/service layer
-lib/                    Business logic, auth, Supabase, notifications, calendar
-supabase/migrations/    Database schema history
-supabase/seed.sql       Seed data
+app/                    Rutas de Next.js y handlers de API
+components/             Componentes de UI
+services/               Capa cliente de fetch/services
+lib/                    Lógica de negocio, auth, Supabase, notificaciones, calendario
+supabase/migrations/    Historial del esquema de base de datos
+supabase/seed.sql       Datos semilla
 ```
 
-## Required Supabase capabilities
+## Capacidades requeridas de Supabase
 
-For the project to work properly, your Supabase project must support all of the following:
+Para que el proyecto funcione correctamente, tu proyecto de Supabase debe soportar todo lo siguiente:
 
-- Email/password auth
-- `auth.users` access through the service-role key
-- Postgres functions created by the migrations
-- Private storage bucket `prescriptions`
-- Service-role access for server-side writes
+- Auth con email/password
+- acceso a `auth.users` mediante la service-role key
+- funciones Postgres creadas por las migraciones
+- bucket privado `prescriptions`
+- acceso con service-role para escrituras del lado servidor
 
-## Notes and gotchas
+## Notas y consideraciones
 
-- Doctor registration is not an open signup flow. It only works for DNI values already present in `approved_doctors`.
-- Patient accounts are created by doctors from the doctor panel.
-- Patient activation happens automatically on first authenticated session.
-- Prescription file upload currently accepts:
+- El registro de médicos no es un signup abierto. Solo funciona para DNI que ya existan en `approved_doctors`.
+- Las cuentas de pacientes son creadas por médicos desde el panel médico.
+- La activación del paciente ocurre automáticamente en la primera sesión autenticada.
+- La carga de archivos de receta actualmente acepta:
   - `application/pdf`
   - `image/png`
-- The refill calculation has a testing override enabled in `lib/patient/medication-calculations.ts`:
+- El cálculo de reposición tiene un override de testing habilitado en `lib/patient/medication-calculations.ts`:
   - `FORCE_ENABLE_REFILL_FOR_TESTING = true`
-- The internal calendar notification endpoint requires the cron bearer secret configured in `.env.local`.
+- El endpoint interno de notificaciones del calendario requiere el bearer secret de cron configurado en `.env.local`.
 
-## Troubleshooting
+## Solución de problemas
 
-### Missing Supabase env errors
+### Errores por variables de entorno de Supabase faltantes
 
-If you see errors like:
+Si ves errores como:
 
 - `Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `Missing SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL, or SUPABASE_SERVICE_ROLE_KEY`
 
-check `.env.local` and restart the dev server.
+revisá `.env.local` y reiniciá el servidor de desarrollo.
 
-### Doctor registration fails
+### Falla el registro de médicos
 
-Check:
+Verificá:
 
-- the DNI exists in `approved_doctors`
-- the migrations were applied in order
-- `SUPABASE_SERVICE_ROLE_KEY` is valid
-- the doctor was not already claimed
+- que el DNI exista en `approved_doctors`
+- que las migraciones se hayan aplicado en orden
+- que `SUPABASE_SERVICE_ROLE_KEY` sea válida
+- que el médico no haya sido reclamado previamente
 
-### Protected requests return unauthorized
+### Las requests protegidas devuelven unauthorized
 
-Check:
+Verificá:
 
-- you are logged in through Supabase Auth
-- the browser session is valid
-- the corresponding `active_doctors` or `patients` row exists
+- que hayas iniciado sesión mediante Supabase Auth
+- que la sesión del navegador siga siendo válida
+- que exista la fila correspondiente en `active_doctors` o `patients`
 
-### File upload fails
+### Falla la carga de archivos
 
-Check:
+Verificá:
 
-- the `prescriptions` bucket exists
-- the service-role key is configured
-- the file is PNG or PDF
-- the file is under 8 MB
+- que exista el bucket `prescriptions`
+- que la service-role key esté configurada
+- que el archivo sea PNG o PDF
+- que el archivo pese menos de 8 MB
