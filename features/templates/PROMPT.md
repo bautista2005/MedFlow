@@ -14,7 +14,7 @@ Instructions:
 - Use MCP Supabase access if needed to retrieve schema details.
 
 3. Feature Analysis
-- Open and read the file located at: `/features/Notificacion7.md`
+- Open and read the file located at: `/features/CHATBOT.md`
 - Fully understand the feature requirements and expected behavior.
 
 4. Adaptation to Current System
@@ -42,7 +42,7 @@ Produce a detailed plan including:
 
 7. Output
 - Create a new file at:
-  `/features/Notificacion7_implementacion.md`
+  `/features/CHATBOT.md`
 - The file should be clean, structured, and ready for development use.
 
 Constraints:

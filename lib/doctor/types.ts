@@ -18,6 +18,15 @@ export type PatientSummary = {
   account_status: "invited" | "active" | "disabled";
   is_primary: boolean;
   preferred_pharmacy: PharmacySummary | null;
+  risk_status: "normal" | "warning" | "critical" | null;
+  risk_score: number | null;
+  last_alert_at: string | null;
+};
+
+export type PatientRiskIndicator = {
+  risk_status: "normal" | "warning" | "critical" | null;
+  risk_score: number | null;
+  last_alert_at: string | null;
 };
 
 export type PatientMedicationSummary = {
@@ -69,8 +78,45 @@ export type PatientDetail = {
   zone: string | null;
   account_status: "invited" | "active" | "disabled";
   preferred_pharmacy: PharmacySummary | null;
+  risk_status: "normal" | "warning" | "critical" | null;
+  risk_score: number | null;
+  last_alert_at: string | null;
   medications: PatientMedicationSummary[];
   requests: PrescriptionRequestSummary[];
+  recent_alerts: DoctorPatientAlertSummary[];
+};
+
+export type DoctorPatientAlertStatus = "open" | "acknowledged" | "closed";
+
+export type DoctorPatientAlertSeverity = "warning" | "critical";
+
+export type DoctorPatientAlertSummary = {
+  doctor_patient_alert_id: number;
+  patient_id: number;
+  patient_name: string | null;
+  active_doctor_id: number;
+  patient_chat_log_id: number | null;
+  severity: DoctorPatientAlertSeverity;
+  title: string;
+  message: string;
+  status: DoctorPatientAlertStatus;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  acknowledged_at: string | null;
+  closed_at: string | null;
+};
+
+export type DoctorAlertsResponse = {
+  alerts: DoctorPatientAlertSummary[];
+};
+
+export type UpdateDoctorAlertStatusPayload = {
+  status: DoctorPatientAlertStatus;
+};
+
+export type SendDoctorPatientNotificationPayload = {
+  message: string;
+  type?: "doctor_follow_up_requested";
 };
 
 export type CreatePatientMedicationInput = {

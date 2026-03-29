@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { DoctorSessionError, requireAuthenticatedDoctor } from "@/lib/auth/doctor-session";
+import { listDoctorAlerts, getPatientRiskIndicators } from "@/lib/chatbot/alerts";
 import { normalizeWeeklyScheduleSummary } from "@/lib/calendar/utils";
 import type {
   PatientDetail,
@@ -175,6 +176,12 @@ export async function GET(request: Request, context: PatientContext) {
     }
 
     const requestIds = (requests ?? []).map((item) => item.prescription_request_id);
+    const [riskIndicators, doctorAlerts] = await Promise.all([
+      getPatientRiskIndicators([parsedPatientId]),
+      listDoctorAlerts({
+        activeDoctorId: doctor.activeDoctorId,
+      }),
+    ]);
     const currentFiles =
       requestIds.length === 0
         ? []
@@ -201,6 +208,8 @@ export async function GET(request: Request, context: PatientContext) {
       ]),
     );
 
+    const risk = riskIndicators.get(parsedPatientId);
+
     const response: PatientDetail = {
       patient_id: patient.patient_id,
       name: patient.name,
@@ -211,6 +220,9 @@ export async function GET(request: Request, context: PatientContext) {
       zone: patient.zone,
       account_status: patient.account_status,
       preferred_pharmacy: normalizeRelation(patient.pharmacies),
+      risk_status: risk?.risk_status ?? null,
+      risk_score: risk?.risk_score ?? null,
+      last_alert_at: risk?.last_alert_at ?? null,
       medications: ((medications ?? []) as (Omit<PatientMedicationSummary, "weekly_schedule"> & {
         weekly_schedule_configs: WeeklyScheduleRelation | WeeklyScheduleRelation[] | null;
       })[]).map((medication) => ({
@@ -242,6 +254,7 @@ export async function GET(request: Request, context: PatientContext) {
         assigned_pharmacy: normalizeRelation(item.assigned_pharmacy),
         current_file: fileByRequestId.get(item.prescription_request_id) ?? null,
       })),
+      recent_alerts: doctorAlerts.filter((alert) => alert.patient_id === parsedPatientId).slice(0, 5),
     };
 
     return NextResponse.json(response);

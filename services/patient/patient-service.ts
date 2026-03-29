@@ -7,6 +7,9 @@ import type {
 } from "@/lib/calendar/types";
 import type {
   CreatePatientRequestPayload,
+  PatientChatHistoryResponse,
+  PatientChatMessagePayload,
+  PatientChatMessageResponse,
   PatientDashboardResponse,
   PatientNotificationListResponse,
   PatientNotificationSummary,
@@ -50,6 +53,21 @@ async function patientFetch<T>(input: string, init?: RequestInit) {
 
 export function getPatientDashboard() {
   return patientFetch<PatientDashboardResponse>("/api/patient/dashboard");
+}
+
+export function sendPatientChatMessage(payload: PatientChatMessagePayload) {
+  return patientFetch<PatientChatMessageResponse>("/api/patient/chatbot/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listPatientChatHistory(limit = 20) {
+  const search = new URLSearchParams({ limit: String(limit) }).toString();
+  return patientFetch<PatientChatHistoryResponse>(`/api/patient/chatbot/history?${search}`);
 }
 
 export function getPatientWeeklyCalendar(weekStart?: string) {

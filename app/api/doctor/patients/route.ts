@@ -5,6 +5,7 @@ import {
   normalizePatientMedicationInput,
   validatePatientMedicationInput,
 } from "@/lib/doctor/patient-medication";
+import { getPatientRiskIndicators } from "@/lib/chatbot/alerts";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import type {
   CreatePatientPayload,
@@ -71,6 +72,9 @@ function mapPatientRow(row: PatientRow): PatientSummary {
     account_status: patient.account_status,
     is_primary: row.is_primary,
     preferred_pharmacy: normalizePharmacy(patient.pharmacies),
+    risk_status: null,
+    risk_score: null,
+    last_alert_at: null,
   };
 }
 
@@ -161,12 +165,26 @@ export async function GET(request: Request) {
       );
     }
 
+    const mappedPatients = ((patientRows ?? []) as unknown as PatientRow[]).map(mapPatientRow);
+    const riskIndicators = await getPatientRiskIndicators(
+      mappedPatients.map((patient) => patient.patient_id),
+    );
+
     return NextResponse.json({
       doctor: {
         name: doctor.name,
         email: doctor.email,
       },
-      patients: ((patientRows ?? []) as unknown as PatientRow[]).map(mapPatientRow),
+      patients: mappedPatients.map((patient) => {
+        const risk = riskIndicators.get(patient.patient_id);
+
+        return {
+          ...patient,
+          risk_status: risk?.risk_status ?? null,
+          risk_score: risk?.risk_score ?? null,
+          last_alert_at: risk?.last_alert_at ?? null,
+        };
+      }),
       pharmacies: (pharmacies ?? []) as PharmacySummary[],
     });
   } catch (error) {

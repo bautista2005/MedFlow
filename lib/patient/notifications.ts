@@ -156,6 +156,7 @@ type CreateDoctorMessageNotificationInput = {
   medicationName?: string | null;
   title: string;
   message: string;
+  type: "doctor_observation_created" | "doctor_follow_up_requested" | "doctor_chatbot_alert_acknowledged";
   messageKind: DoctorMessageNotificationKind;
   observation: string;
   dedupeKey?: string | null;
@@ -662,10 +663,63 @@ export async function createDoctorObservationNotification(
     message: input.medicationName
       ? `Tu medico dejo una observacion sobre ${input.medicationName}: ${normalizedObservation}`
       : `Tu medico dejo una nueva observacion: ${normalizedObservation}`,
+    type: "doctor_observation_created",
     messageKind: "observation",
     observation: normalizedObservation,
     dedupeKey: input.prescriptionRequestId
       ? `doctor_observation_created:${input.prescriptionRequestId}:${normalizedObservation}`
+      : null,
+  });
+}
+
+export async function createDoctorFollowUpNotification(input: {
+  patientId: number;
+  activeDoctorId: number;
+  patientMedicationId?: number | null;
+  title?: string | null;
+  message: string;
+}) {
+  const normalizedMessage = input.message.trim();
+
+  if (!normalizedMessage) {
+    return null;
+  }
+
+  return createDoctorMessageNotification({
+    patientId: input.patientId,
+    activeDoctorId: input.activeDoctorId,
+    patientMedicationId: input.patientMedicationId ?? null,
+    title: input.title?.trim() || "Seguimiento solicitado por tu medico",
+    message: normalizedMessage,
+    type: "doctor_follow_up_requested",
+    messageKind: "follow_up",
+    observation: normalizedMessage,
+    dedupeKey: null,
+  });
+}
+
+export async function createDoctorChatbotAcknowledgementNotification(input: {
+  patientId: number;
+  activeDoctorId: number;
+  patientChatLogId?: number | null;
+  message: string;
+}) {
+  const normalizedMessage = input.message.trim();
+
+  if (!normalizedMessage) {
+    return null;
+  }
+
+  return createDoctorMessageNotification({
+    patientId: input.patientId,
+    activeDoctorId: input.activeDoctorId,
+    title: "Tu medico reviso una alerta del asistente",
+    message: normalizedMessage,
+    type: "doctor_chatbot_alert_acknowledged",
+    messageKind: "chatbot_acknowledged",
+    observation: normalizedMessage,
+    dedupeKey: input.patientChatLogId
+      ? `doctor_chatbot_alert_acknowledged:${input.patientChatLogId}`
       : null,
   });
 }
@@ -692,7 +746,7 @@ async function createDoctorMessageNotification(input: CreateDoctorMessageNotific
     prescriptionRequestId: input.prescriptionRequestId ?? null,
     source: "doctor",
     category: "doctor_message",
-    type: "doctor_observation_created",
+    type: input.type,
     title: input.title,
     message: input.message,
     priority: "normal",

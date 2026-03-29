@@ -34,6 +34,10 @@ export type PatientNotificationType =
   | "prescription_request_choose_alternative_pharmacy"
   | "prescription_request_ready_for_pickup"
   | "doctor_observation_created"
+  | "doctor_follow_up_requested"
+  | "doctor_chatbot_alert_acknowledged"
+  | "chatbot_warning_logged"
+  | "chatbot_critical_alert_sent"
   | "medication_running_low"
   | "follow_up_reminder";
 export type PatientNotificationStatus = "unread" | "read";
@@ -60,7 +64,7 @@ export type DoctorSummary = {
   organization: string;
 };
 
-export type DoctorMessageNotificationKind = "observation";
+export type DoctorMessageNotificationKind = "observation" | "follow_up" | "chatbot_acknowledged";
 
 export type DoctorMessageNotificationMetadata = {
   doctor_id: number;
@@ -70,6 +74,57 @@ export type DoctorMessageNotificationMetadata = {
   message_kind: DoctorMessageNotificationKind;
   observation: string;
   medication_name?: string;
+};
+
+export type PatientChatSeverity = "normal" | "warning" | "critical";
+
+export type PatientChatContextSummary = {
+  patient_name: string;
+  primary_doctor_name: string | null;
+  active_medications_count: number;
+  active_medication_names: string[];
+  recent_requests: {
+    total: number;
+    statuses: PrescriptionRequestStatus[];
+  };
+  adherence_last_7_days: {
+    scheduled: number;
+    taken: number;
+    taken_late: number;
+    missed: number;
+    adherence_ratio: number | null;
+  };
+};
+
+export type PatientChatLogSummary = {
+  patient_chat_log_id: number;
+  patient_id: number;
+  active_doctor_id: number | null;
+  patient_medication_id: number | null;
+  message_user: string;
+  message_ai: string;
+  severity: PatientChatSeverity;
+  risk_score: number;
+  symptom_tags: string[];
+  context_snapshot: PatientChatContextSummary;
+  created_at: string;
+};
+
+export type PatientChatHistoryResponse = {
+  messages: PatientChatLogSummary[];
+};
+
+export type PatientChatMessagePayload = {
+  message: string;
+};
+
+export type PatientChatMessageResponse = {
+  reply: string;
+  severity: PatientChatSeverity;
+  risk_score: number;
+  created_alert: boolean;
+  disclaimer: string;
+  message: PatientChatLogSummary;
 };
 
 export type PrescriptionFileSummary = {
@@ -196,7 +251,9 @@ export function getDoctorMessageNotificationMetadata(
   if (
     !isPositiveInteger(doctorId) ||
     !isPositiveInteger(patientId) ||
-    messageKind !== "observation" ||
+    (messageKind !== "observation" &&
+      messageKind !== "follow_up" &&
+      messageKind !== "chatbot_acknowledged") ||
     typeof observation !== "string" ||
     observation.trim().length === 0
   ) {
@@ -214,7 +271,7 @@ export function getDoctorMessageNotificationMetadata(
       ? { related_prescription_id: relatedPrescriptionId }
       : {}),
     ...(isPositiveInteger(relatedTreatmentId) ? { related_treatment_id: relatedTreatmentId } : {}),
-    message_kind: "observation",
+    message_kind: messageKind,
     observation,
     ...(typeof medicationName === "string" && medicationName.trim().length > 0
       ? { medication_name: medicationName }

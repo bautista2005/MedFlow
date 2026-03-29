@@ -29,6 +29,18 @@ const emptyForm: CreatePatientPayload = {
   medications: [],
 };
 
+const riskLabels = {
+  normal: "Normal",
+  warning: "En seguimiento",
+  critical: "Requiere atencion",
+} as const;
+
+const riskClassNames = {
+  normal: "border-emerald-200 bg-emerald-50 text-emerald-900",
+  warning: "border-amber-200 bg-amber-50 text-amber-900",
+  critical: "border-rose-200 bg-rose-50 text-rose-900",
+} as const;
+
 export function PatientsPanel() {
   const [data, setData] = useState<PatientsIndexResponse | null>(null);
   const [form, setForm] = useState<CreatePatientPayload>(emptyForm);
@@ -223,6 +235,55 @@ export function PatientsPanel() {
               {isSubmitting ? "Creando cuenta..." : "Crear paciente"}
             </Button>
           </form>
+        </CardContent>
+      </Card>
+
+      <Card className="mx-auto w-full max-w-5xl border-white/70 bg-white/92 shadow-[0_28px_100px_rgba(15,23,42,0.08)]">
+        <CardHeader>
+          <CardTitle>Pacientes vinculados</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          {data?.patients.length ? (
+            data.patients.map((patient) => (
+              <Link
+                key={patient.patient_id}
+                href={`/panel/pacientes/${patient.patient_id}`}
+                className="rounded-[1.6rem] border border-slate-200 bg-white px-5 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.04)] transition hover:border-blue-200 hover:bg-blue-50/40"
+              >
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div className="space-y-1">
+                    <p className="text-lg font-semibold text-slate-900">{patient.name}</p>
+                    <p className="text-sm text-slate-600">
+                      DNI {patient.dni} · {patient.email}
+                    </p>
+                    <p className="text-sm text-slate-500">
+                      {patient.zone || "Zona sin definir"} ·{" "}
+                      {patient.preferred_pharmacy?.name || "Sin farmacia preferida"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">
+                      {patient.account_status}
+                    </span>
+                    {patient.risk_status ? (
+                      <span
+                        className={cn(
+                          "rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em]",
+                          riskClassNames[patient.risk_status],
+                        )}
+                      >
+                        {riskLabels[patient.risk_status]}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              </Link>
+            ))
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Cuando registres pacientes apareceran listados aca.
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

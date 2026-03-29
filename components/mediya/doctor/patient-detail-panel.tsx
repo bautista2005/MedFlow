@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useId, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCheck, Send } from "lucide-react";
 
 import type { PatientDetail } from "@/lib/doctor/types";
 import {
   getDoctorPatientDetail,
+  sendDoctorPatientNotification,
+  updateDoctorAlertStatus,
   uploadDoctorPrescriptionFile,
 } from "@/services/doctor/doctor-service";
 import { PatientWeeklyCalendarPanel } from "@/components/mediya/doctor/patient-weekly-calendar-panel";
@@ -59,11 +61,27 @@ const WEEKDAY_LABELS: Record<number, string> = {
 
 const WEEKDAY_DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
+const riskLabels = {
+  normal: "Normal",
+  warning: "En seguimiento",
+  critical: "Requiere atencion",
+} as const;
+
+const riskClassNames = {
+  normal: "border-emerald-200 bg-emerald-50 text-emerald-900",
+  warning: "border-amber-200 bg-amber-50 text-amber-900",
+  critical: "border-rose-200 bg-rose-50 text-rose-900",
+} as const;
+
 export function PatientDetailPanel({ patientId }: PatientDetailPanelProps) {
   const [data, setData] = useState<PatientDetail | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isFormVisible, setIsFormVisible] = useState(false);
   const [uploadingRequestId, setUploadingRequestId] = useState<number | null>(null);
+  const [doctorMessage, setDoctorMessage] = useState("");
+  const [isSendingDoctorMessage, setIsSendingDoctorMessage] = useState(false);
+  const [updatingAlertId, setUpdatingAlertId] = useState<number | null>(null);
   const fileInputPrefix = useId();
 
   async function refreshPatient() {
@@ -174,6 +192,57 @@ export function PatientDetailPanel({ patientId }: PatientDetailPanelProps) {
     }
   }
 
+  async function handleSendDoctorMessage(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!doctorMessage.trim()) {
+      setErrorMessage("Ingresa un mensaje para el paciente.");
+      return;
+    }
+
+    setIsSendingDoctorMessage(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      await sendDoctorPatientNotification(patientId, {
+        message: doctorMessage.trim(),
+        type: "doctor_follow_up_requested",
+      });
+      setDoctorMessage("");
+      setSuccessMessage("Notificacion enviada al paciente.");
+      await refreshPatient();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "No se pudo enviar la notificacion.",
+      );
+    } finally {
+      setIsSendingDoctorMessage(false);
+    }
+  }
+
+  async function handleAlertStatusChange(alertId: number, status: "acknowledged" | "closed") {
+    setUpdatingAlertId(alertId);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      await updateDoctorAlertStatus(alertId, { status });
+      setSuccessMessage(
+        status === "acknowledged"
+          ? "Alerta marcada como revisada."
+          : "Alerta cerrada correctamente.",
+      );
+      await refreshPatient();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "No se pudo actualizar la alerta.",
+      );
+    } finally {
+      setUpdatingAlertId(null);
+    }
+  }
+
   if (errorMessage) {
     return (
       <div className="space-y-4">
@@ -220,7 +289,12 @@ export function PatientDetailPanel({ patientId }: PatientDetailPanelProps) {
 
       <Card className="border-blue-100 bg-[linear-gradient(180deg,_rgba(255,255,255,0.95),_rgba(248,251,255,0.95))] shadow-[0_28px_100px_rgba(37,99,235,0.08)]">
         <CardHeader>
-          <Badge className="border-blue-200 bg-blue-50 text-blue-900">Paciente</Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge className="border-blue-200 bg-blue-50 text-blue-900">Paciente</Badge>
+            {data.risk_status ? (
+              <Badge className={riskClassNames[data.risk_status]}>{riskLabels[data.risk_status]}</Badge>
+            ) : null}
+          </div>
           <CardTitle className="font-sans text-[1.9rem] font-semibold tracking-[-0.03em] text-slate-900">
             {data.name}
           </CardTitle>
@@ -245,6 +319,148 @@ export function PatientDetailPanel({ patientId }: PatientDetailPanelProps) {
             Farmacia preferida:{" "}
             {data.preferred_pharmacy ? data.preferred_pharmacy.name : "Sin preferencia"}
           </p>
+        </CardContent>
+      </Card>
+
+      {errorMessage ? (
+        <div className="rounded-[1.5rem] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {errorMessage}
+        </div>
+      ) : null}
+      {successMessage ? (
+        <div className="rounded-[1.5rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          {successMessage}
+        </div>
+      ) : null}
+
+      <Card className="border-blue-100 bg-[linear-gradient(180deg,_rgba(255,255,255,0.95),_rgba(248,251,255,0.95))] shadow-[0_28px_100px_rgba(37,99,235,0.08)]">
+        <CardHeader>
+          <Badge className="border-amber-200 bg-amber-50 text-amber-900">Riesgo y alertas</Badge>
+          <CardTitle className="font-sans text-[1.7rem] font-semibold tracking-[-0.03em] text-slate-900">
+            Seguimiento clinico
+          </CardTitle>
+          <CardDescription className="text-slate-500">
+            Estado agregado del chatbot, adherencia y eventos recientes del paciente.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
+          <div className="space-y-4">
+            <div className="rounded-[1.6rem] border border-slate-200 bg-white px-5 py-4 text-sm text-slate-600 shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                Estado actual
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                {data.risk_status ? (
+                  <Badge className={riskClassNames[data.risk_status]}>{riskLabels[data.risk_status]}</Badge>
+                ) : (
+                  <Badge className="border-slate-200 bg-slate-100 text-slate-600">Sin datos</Badge>
+                )}
+                {typeof data.risk_score === "number" ? (
+                  <span className="text-sm text-slate-500">
+                    Score {(data.risk_score * 100).toFixed(0)}%
+                  </span>
+                ) : null}
+              </div>
+              {data.last_alert_at ? (
+                <p className="mt-3 text-sm text-slate-500">
+                  Ultima alerta: {new Date(data.last_alert_at).toLocaleString("es-AR")}
+                </p>
+              ) : (
+                <p className="mt-3 text-sm text-slate-500">
+                  Todavia no hay alertas recientes registradas.
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              {data.recent_alerts.length === 0 ? (
+                <div className="rounded-[1.6rem] border border-slate-200 bg-white px-5 py-4 text-sm text-slate-500 shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
+                  No hay alertas abiertas o recientes para este paciente.
+                </div>
+              ) : null}
+              {data.recent_alerts.map((alert) => (
+                <div
+                  key={alert.doctor_patient_alert_id}
+                  className="rounded-[1.6rem] border border-slate-200 bg-white px-5 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.04)]"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge
+                      className={
+                        alert.severity === "critical"
+                          ? "border-rose-200 bg-rose-50 text-rose-900"
+                          : "border-amber-200 bg-amber-50 text-amber-900"
+                      }
+                    >
+                      {alert.severity === "critical" ? "Critica" : "Warning"}
+                    </Badge>
+                    <Badge className="border-slate-200 bg-slate-100 text-slate-600">
+                      {alert.status}
+                    </Badge>
+                  </div>
+                  <p className="mt-3 font-semibold text-slate-900">{alert.title}</p>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">{alert.message}</p>
+                  <p className="mt-3 text-xs uppercase tracking-[0.14em] text-slate-400">
+                    {new Date(alert.created_at).toLocaleString("es-AR")}
+                  </p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {alert.status === "open" ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          handleAlertStatusChange(alert.doctor_patient_alert_id, "acknowledged")
+                        }
+                        disabled={updatingAlertId === alert.doctor_patient_alert_id}
+                      >
+                        <CheckCheck className="mr-2 h-4 w-4" />
+                        Revisada
+                      </Button>
+                    ) : null}
+                    {alert.status !== "closed" ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() =>
+                          handleAlertStatusChange(alert.doctor_patient_alert_id, "closed")
+                        }
+                        disabled={updatingAlertId === alert.doctor_patient_alert_id}
+                      >
+                        <AlertTriangle className="mr-2 h-4 w-4" />
+                        Cerrar
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <form
+            onSubmit={handleSendDoctorMessage}
+            className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.04)]"
+          >
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">
+              Mensaje al paciente
+            </p>
+            <h3 className="mt-2 text-lg font-semibold text-slate-900">
+              Enviar seguimiento manual
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              El mensaje se registra en el inbox actual del paciente y aparece en notificaciones.
+            </p>
+            <textarea
+              value={doctorMessage}
+              onChange={(event) => setDoctorMessage(event.target.value)}
+              placeholder="Ej. Quiero que me cuentes si los sintomas siguieron durante las proximas 24 horas."
+              rows={6}
+              className="mt-4 w-full resize-none rounded-[18px] border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
+            />
+            <Button type="submit" className="mt-4 w-full" disabled={isSendingDoctorMessage}>
+              <Send className="mr-2 h-4 w-4" />
+              {isSendingDoctorMessage ? "Enviando..." : "Enviar notificacion"}
+            </Button>
+          </form>
         </CardContent>
       </Card>
 

@@ -1,11 +1,11 @@
 Objective:
-Execute the implementation plan defined in `/features/Notificacion7_implementacion.md` by applying all necessary changes to the current codebase and database.
+Execute the implementation plan defined in `/features/CHATBOT.md` by applying all necessary changes to the current codebase and database.
 
 Instructions:
 
 1. Read the Implementation Plan
 - Open and fully understand:
-  `/features/Notificacion7_implementacion.md`
+  `/features/CHATBOT.md`
 - Identify all required changes:
   - Backend logic
   - Frontend updates

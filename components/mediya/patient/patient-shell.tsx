@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import { Logo } from "@/components/mediya/logo";
 import { PatientAccessGuard } from "@/components/mediya/patient/patient-access-guard";
+import { PatientChatbotLauncher } from "@/components/mediya/patient/patient-chatbot-launcher";
 import { PatientTopbarNav } from "@/components/mediya/patient/patient-topbar-nav";
 import { PatientTopbarProfile } from "@/components/mediya/patient/patient-topbar-profile";
 
@@ -27,6 +28,7 @@ export function PatientShell({ children }: PatientShellProps) {
         <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 md:px-10 md:py-10 lg:px-12">
           {children}
         </main>
+        <PatientChatbotLauncher />
       </div>
     </PatientAccessGuard>
   );

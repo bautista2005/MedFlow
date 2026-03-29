@@ -4,10 +4,13 @@ import type { DoctorWeeklyCalendarResponse } from "@/lib/calendar/types";
 import type {
   CreatePatientPayload,
   CreatePatientTreatmentPayload,
+  DoctorAlertsResponse,
   DoctorProfileResponse,
   DoctorRequestsResponse,
   PatientDetail,
   PatientsIndexResponse,
+  SendDoctorPatientNotificationPayload,
+  UpdateDoctorAlertStatusPayload,
   UpdateDoctorRequestPharmacyStatusPayload,
   UpdateDoctorRequestNotePayload,
 } from "@/lib/doctor/types";
@@ -50,6 +53,11 @@ export function listDoctorPatients() {
   return doctorFetch<PatientsIndexResponse>("/api/doctor/patients");
 }
 
+export function listDoctorAlerts(includeClosed = false) {
+  const search = includeClosed ? "?includeClosed=true" : "";
+  return doctorFetch<DoctorAlertsResponse>(`/api/doctor/alerts${search}`);
+}
+
 export function getDoctorProfile() {
   return doctorFetch<DoctorProfileResponse>("/api/doctor/profile");
 }
@@ -66,6 +74,35 @@ export function createDoctorPatient(payload: CreatePatientPayload) {
 
 export function getDoctorPatientDetail(patientId: string) {
   return doctorFetch<PatientDetail>(`/api/doctor/patients/${patientId}`);
+}
+
+export function updateDoctorAlertStatus(
+  alertId: number,
+  payload: UpdateDoctorAlertStatusPayload,
+) {
+  return doctorFetch<{ alert: DoctorAlertsResponse["alerts"][number]; message: string }>(
+    `/api/doctor/alerts/${alertId}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function sendDoctorPatientNotification(
+  patientId: string,
+  payload: SendDoctorPatientNotificationPayload,
+) {
+  return doctorFetch<{ message: string }>(`/api/doctor/patients/${patientId}/notify`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
 }
 
 export function getDoctorPatientWeeklyCalendar(patientId: string, weekStart?: string) {
