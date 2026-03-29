@@ -77,3 +77,15 @@ a {
 @utility text-balance {
   text-wrap: balance;
 }
+
+@keyframes mediya-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { DoctorSessionError, requireAuthenticatedDoctor } from "@/lib/auth/doctor-session";
+import { autoAdvanceTestingPrescriptionRequests } from "@/lib/patient/notifications";
 import type {
   PrescriptionFileSummary,
   PrescriptionRequestSummary,
@@ -67,6 +68,9 @@ function normalizeRelation<T>(value: T | T[] | null): T | null {
 export async function GET(request: Request) {
   try {
     const doctor = await requireAuthenticatedDoctor(request);
+    await autoAdvanceTestingPrescriptionRequests({
+      activeDoctorId: doctor.activeDoctorId,
+    });
     const supabase = createAdminSupabaseClient();
     const { data: rows, error } = await supabase
       .from("prescription_requests")

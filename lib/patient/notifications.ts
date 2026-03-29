@@ -11,7 +11,11 @@ import type {
   PatientNotificationType,
   PrescriptionRequestStatus,
 } from "@/lib/patient/types";
+import { buildPrescriptionProgressSummary } from "@/lib/patient/prescription-progress";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
+
+const FORCE_AUTO_READY_FOR_PICKUP_FOR_TESTING = true;
+const AUTO_READY_FOR_PICKUP_DELAY_MS = 5_000;
 
 export class PatientNotificationError extends Error {
   status: number;
@@ -43,6 +47,12 @@ type PatientNotificationRow = {
   read_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type NotificationPrescriptionRequestRow = {
+  prescription_request_id: number;
+  medication_name_snapshot: string;
+  status: PrescriptionRequestStatus;
 };
 
 type CreatePatientNotificationInput = {
@@ -114,6 +124,11 @@ type TransitionPrescriptionRequestStatusInput = {
   fileUploadedAt?: string;
 };
 
+type AutoAdvancePrescriptionRequestsOptions = {
+  activeDoctorId?: number;
+  patientId?: number;
+};
+
 type CreateCalendarNotificationInput = {
   patientId: number;
   activeDoctorId?: number | null;
@@ -165,7 +180,15 @@ type CreateDoctorMessageNotificationInput = {
 const patientNotificationSelect =
   "patient_notification_id, patient_id, active_doctor_id, patient_medication_id, prescription_request_id, weekly_schedule_config_id, source, category, type, title, message, status, priority, action_url, metadata, scheduled_for, read_at, created_at, updated_at";
 
-function mapPatientNotification(row: PatientNotificationRow): PatientNotificationSummary {
+function mapPatientNotification(
+  row: PatientNotificationRow,
+  requestById?: Map<number, NotificationPrescriptionRequestRow>,
+): PatientNotificationSummary {
+  const linkedRequest =
+    row.category === "prescription" && typeof row.prescription_request_id === "number"
+      ? requestById?.get(row.prescription_request_id) ?? null
+      : null;
+
   return {
     patient_notification_id: row.patient_notification_id,
     patient_id: row.patient_id,
@@ -186,6 +209,13 @@ function mapPatientNotification(row: PatientNotificationRow): PatientNotificatio
     read_at: row.read_at,
     created_at: row.created_at,
     updated_at: row.updated_at,
+    prescription_progress: linkedRequest
+      ? buildPrescriptionProgressSummary({
+          medicationName: linkedRequest.medication_name_snapshot,
+          status: linkedRequest.status,
+          dismissible: row.status === "unread",
+        })
+      : null,
   };
 }
 
@@ -507,6 +537,63 @@ export async function transitionPrescriptionRequestStatus(
   } satisfies PrescriptionWorkflowRequest;
 }
 
+export async function autoAdvanceTestingPrescriptionRequests(
+  options: AutoAdvancePrescriptionRequestsOptions = {},
+) {
+  if (!FORCE_AUTO_READY_FOR_PICKUP_FOR_TESTING) {
+    return;
+  }
+
+  const cutoffIso = new Date(Date.now() - AUTO_READY_FOR_PICKUP_DELAY_MS).toISOString();
+  const supabase = createAdminSupabaseClient();
+  let query = supabase
+    .from("prescription_requests")
+    .select(
+      "prescription_request_id, patient_id, active_doctor_id, patient_medication_id, status, medication_name_snapshot, preferred_pharmacy_id, assigned_pharmacy_id, updated_at, assigned_pharmacy:pharmacies!prescription_requests_assigned_pharmacy_id_fkey(pharmacy_id, name)",
+    )
+    .eq("status", "pharmacy_checking")
+    .lte("updated_at", cutoffIso);
+
+  if (typeof options.activeDoctorId === "number") {
+    query = query.eq("active_doctor_id", options.activeDoctorId);
+  }
+
+  if (typeof options.patientId === "number") {
+    query = query.eq("patient_id", options.patientId);
+  }
+
+  const { data: staleRequests, error } = await query;
+
+  if (error || !staleRequests?.length) {
+    return;
+  }
+
+  await Promise.allSettled(
+    staleRequests.map((request) => {
+      const assignedPharmacy = Array.isArray(request.assigned_pharmacy)
+        ? (request.assigned_pharmacy[0] ?? null)
+        : request.assigned_pharmacy;
+
+      return transitionPrescriptionRequestStatus({
+        request: {
+          prescriptionRequestId: request.prescription_request_id,
+          patientId: request.patient_id,
+          activeDoctorId: request.active_doctor_id,
+          patientMedicationId: request.patient_medication_id,
+          medicationName: request.medication_name_snapshot,
+          status: request.status,
+          preferredPharmacyId: request.preferred_pharmacy_id,
+          assignedPharmacyId: request.assigned_pharmacy_id,
+        },
+        nextStatus: "ready_for_pickup",
+        pharmacyId: assignedPharmacy?.pharmacy_id ?? request.assigned_pharmacy_id,
+        pharmacyName: assignedPharmacy?.name ?? null,
+        resolvedAt: new Date().toISOString(),
+      });
+    }),
+  );
+}
+
 function buildScheduledForTimestamp(date: string, time?: string | null) {
   if (!time) {
     return `${date}T00:00:00.000Z`;
@@ -789,8 +876,37 @@ export async function listPatientNotifications(input: {
     throw new PatientNotificationError("No se pudieron cargar las notificaciones.", 500);
   }
 
+  const notificationRows = (data ?? []) as PatientNotificationRow[];
+  const prescriptionRequestIds = notificationRows
+    .filter(
+      (row): row is PatientNotificationRow & { prescription_request_id: number } =>
+        row.category === "prescription" && typeof row.prescription_request_id === "number",
+    )
+    .map((row) => row.prescription_request_id);
+
+  let requestById = new Map<number, NotificationPrescriptionRequestRow>();
+
+  if (prescriptionRequestIds.length > 0) {
+    const { data: requestRows, error: requestsError } = await createAdminSupabaseClient()
+      .from("prescription_requests")
+      .select("prescription_request_id, medication_name_snapshot, status")
+      .eq("patient_id", input.patientId)
+      .in("prescription_request_id", prescriptionRequestIds);
+
+    if (requestsError) {
+      throw new PatientNotificationError("No se pudieron cargar las notificaciones.", 500);
+    }
+
+    requestById = new Map(
+      ((requestRows ?? []) as NotificationPrescriptionRequestRow[]).map((request) => [
+        request.prescription_request_id,
+        request,
+      ]),
+    );
+  }
+
   return {
-    notifications: ((data ?? []) as PatientNotificationRow[]).map(mapPatientNotification),
+    notifications: notificationRows.map((row) => mapPatientNotification(row, requestById)),
     unread_count: count ?? 0,
   };
 }

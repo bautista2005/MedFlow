@@ -9,6 +9,7 @@ import type {
 import { getDoctorMessageNotificationMetadata } from "@/lib/patient/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PrescriptionProgressNotification } from "@/components/mediya/patient/prescription-progress-notification";
 
 type PatientNotificationItemProps = {
   notification: PatientNotificationSummary;
@@ -116,6 +117,22 @@ export function PatientNotificationItem({
 }: PatientNotificationItemProps) {
   const calendarContext = getCalendarContext(notification);
   const doctorMessageContext = getDoctorMessageContext(notification);
+
+  if (notification.prescription_progress) {
+    return (
+      <PrescriptionProgressNotification
+        progress={notification.prescription_progress}
+        actionUrl={notification.action_url}
+        createdAt={notification.updated_at || notification.created_at}
+        isUpdating={isUpdating}
+        onDismiss={
+          notification.status === "unread"
+            ? () => onMarkAsRead(notification.patient_notification_id)
+            : undefined
+        }
+      />
+    );
+  }
 
   return (
     <article

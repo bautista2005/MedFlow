@@ -1,6 +1,6 @@
-# MEDIYA / MedFlow
+## MedFlow
 
-MEDIYA is a Next.js App Router application for doctor and patient workflows backed by Supabase Auth, Postgres, and Storage.
+MedFlow is a Next.js App Router application for doctor and patient workflows backed by Supabase Auth, Postgres, and Storage.
 
 Current stack:
 

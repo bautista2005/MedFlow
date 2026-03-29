@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 
 import type { DoctorRequestsResponse } from "@/lib/doctor/types";
 import {
@@ -19,10 +19,15 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
+function requiresDoctorAction(status: DoctorRequestsResponse["requests"][number]["status"]) {
+  return status === "pending" || status === "reviewed";
+}
+
 export function RequestsPanel() {
   const [data, setData] = useState<DoctorRequestsResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [uploadingId, setUploadingId] = useState<number | null>(null);
+  const [autoConfirmingRequestId, setAutoConfirmingRequestId] = useState<number | null>(null);
   const [noteDrafts, setNoteDrafts] = useState<Record<number, string>>({});
   const [savingNoteId, setSavingNoteId] = useState<number | null>(null);
   const [updatingPharmacyRequestId, setUpdatingPharmacyRequestId] = useState<number | null>(null);
@@ -42,12 +47,41 @@ export function RequestsPanel() {
     });
   }
 
-  useEffect(() => {
-    refresh().catch((error) => {
+  const refreshWithFeedback = useEffectEvent(async () => {
+    try {
+      await refresh();
+    } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : "No se pudo cargar pedidos.",
       );
-    });
+    }
+  });
+
+  useEffect(() => {
+    void refreshWithFeedback();
+
+    const intervalId = window.setInterval(() => {
+      void refreshWithFeedback();
+    }, 15000);
+
+    const handleWindowFocus = () => {
+      void refreshWithFeedback();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshWithFeedback();
+      }
+    };
+
+    window.addEventListener("focus", handleWindowFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleWindowFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, []);
 
   async function handleUpload(requestId: number, fileList: FileList | null) {
@@ -63,6 +97,30 @@ export function RequestsPanel() {
     try {
       await uploadDoctorPrescriptionFile(requestId, file);
       await refresh();
+      setAutoConfirmingRequestId(requestId);
+
+      window.setTimeout(() => {
+        setUpdatingPharmacyRequestId(requestId);
+        setErrorMessage(null);
+
+        void updateDoctorRequestPharmacyStatus(requestId, { status: "ready_for_pickup" })
+          .then(() => refresh())
+          .catch((error) => {
+            setErrorMessage(
+              error instanceof Error
+                ? error.message
+                : "No se pudo confirmar automaticamente el retiro.",
+            );
+          })
+          .finally(() => {
+            setUpdatingPharmacyRequestId((currentId) =>
+              currentId === requestId ? null : currentId,
+            );
+            setAutoConfirmingRequestId((currentId) =>
+              currentId === requestId ? null : currentId,
+            );
+          });
+      }, 5000);
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : "No se pudo subir la receta.",
@@ -126,6 +184,9 @@ export function RequestsPanel() {
     ready_for_pickup: "Listo para retirar",
     cancelled: "Cancelado",
   };
+  const visibleRequests = (data?.requests ?? []).filter((request) =>
+    requiresDoctorAction(request.status),
+  );
 
   return (
     <div className="space-y-6">
@@ -155,12 +216,12 @@ export function RequestsPanel() {
               {errorMessage}
             </div>
           ) : null}
-          {data?.requests.length === 0 ? (
+          {visibleRequests.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               No hay pedidos registrados todavia.
             </p>
           ) : null}
-          {data?.requests.map((request) => (
+          {visibleRequests.map((request) => (
             <div
               key={request.prescription_request_id}
               className="rounded-[18px] border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.04)] transition-all duration-200 hover:border-blue-200 hover:bg-blue-50/35 hover:shadow-[0_18px_34px_rgba(37,99,235,0.10)]"
@@ -177,6 +238,12 @@ export function RequestsPanel() {
                   </div>
                   <p>{request.medication_name}</p>
                   <p>Pedido: {new Date(request.requested_at).toLocaleString("es-AR")}</p>
+                  {request.resolved_at ? (
+                    <p>
+                      Ultima actualizacion:{" "}
+                      {new Date(request.resolved_at).toLocaleString("es-AR")}
+                    </p>
+                  ) : null}
                   <p>
                     {request.assigned_pharmacy
                       ? `Farmacia actual: ${request.assigned_pharmacy.name}`
@@ -229,6 +296,8 @@ export function RequestsPanel() {
                       <p className="text-xs text-slate-500">
                         {uploadingId === request.prescription_request_id
                           ? "Subiendo..."
+                          : autoConfirmingRequestId === request.prescription_request_id
+                            ? "Receta subida. Se confirmara retiro automaticamente en 5 segundos."
                           : "La carga se procesa apenas seleccionas el archivo."}
                       </p>
                     </>
@@ -281,9 +350,19 @@ export function RequestsPanel() {
                       ) : null}
                     </div>
                   ) : (
-                    <p className="text-xs text-slate-500">
-                      Este pedido ya llego a una etapa final.
-                    </p>
+                    <div className="space-y-1 text-xs text-slate-500">
+                      <p>
+                        {request.status === "ready_for_pickup"
+                          ? "El pedido ya figura como listo para retirar."
+                          : "Este pedido ya llego a una etapa final."}
+                      </p>
+                      {request.resolved_at ? (
+                        <p>
+                          Confirmado el{" "}
+                          {new Date(request.resolved_at).toLocaleString("es-AR")}.
+                        </p>
+                      ) : null}
+                    </div>
                   )}
                 </div>
               </div>

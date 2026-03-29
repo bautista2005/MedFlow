@@ -57,13 +57,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: openRequest, error: openRequestError } = await supabase
+    const { data: openRequests, error: openRequestError } = await supabase
       .from("prescription_requests")
       .select("prescription_request_id, status")
       .eq("patient_id", patient.patientId)
       .eq("patient_medication_id", patientMedicationId)
       .in("status", ACTIVE_PRESCRIPTION_REQUEST_STATUSES satisfies PrescriptionRequestStatus[])
-      .maybeSingle();
+      .order("requested_at", { ascending: false })
+      .limit(1);
 
     if (openRequestError) {
       return NextResponse.json(
@@ -71,6 +72,8 @@ export async function POST(request: Request) {
         { status: 500 },
       );
     }
+
+    const openRequest = openRequests?.[0] ?? null;
 
     const calculation = calculateMedicationStatus(
       {
@@ -120,27 +123,34 @@ export async function POST(request: Request) {
       );
     }
 
-    await createPrescriptionRequestNotification({
-      type: "prescription_request_created",
-      patientId: patient.patientId,
-      activeDoctorId: medication.active_doctor_id,
-      patientMedicationId: medication.patient_medication_id,
-      prescriptionRequestId: insertedRequest.prescription_request_id,
-      medicationName: medication.medication_name,
-      preferredPharmacyId: patient.preferredPharmacyId,
-      assignedPharmacyId: patient.preferredPharmacyId,
-    });
+    const notificationResults = await Promise.allSettled([
+      createPrescriptionRequestNotification({
+        type: "prescription_request_created",
+        patientId: patient.patientId,
+        activeDoctorId: medication.active_doctor_id,
+        patientMedicationId: medication.patient_medication_id,
+        prescriptionRequestId: insertedRequest.prescription_request_id,
+        medicationName: medication.medication_name,
+        preferredPharmacyId: patient.preferredPharmacyId,
+        assignedPharmacyId: patient.preferredPharmacyId,
+      }),
+      createPrescriptionRequestNotification({
+        type: "prescription_request_waiting_doctor",
+        patientId: patient.patientId,
+        activeDoctorId: medication.active_doctor_id,
+        patientMedicationId: medication.patient_medication_id,
+        prescriptionRequestId: insertedRequest.prescription_request_id,
+        medicationName: medication.medication_name,
+        preferredPharmacyId: patient.preferredPharmacyId,
+        assignedPharmacyId: patient.preferredPharmacyId,
+      }),
+    ]);
 
-    await createPrescriptionRequestNotification({
-      type: "prescription_request_waiting_doctor",
-      patientId: patient.patientId,
-      activeDoctorId: medication.active_doctor_id,
-      patientMedicationId: medication.patient_medication_id,
-      prescriptionRequestId: insertedRequest.prescription_request_id,
-      medicationName: medication.medication_name,
-      preferredPharmacyId: patient.preferredPharmacyId,
-      assignedPharmacyId: patient.preferredPharmacyId,
-    });
+    for (const result of notificationResults) {
+      if (result.status === "rejected") {
+        console.error("Failed to create prescription request notification", result.reason);
+      }
+    }
 
     return NextResponse.json({
       prescription_request_id: insertedRequest.prescription_request_id,

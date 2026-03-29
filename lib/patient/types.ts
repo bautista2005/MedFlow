@@ -159,6 +159,26 @@ export type PatientRequestSummary = {
   current_file: PrescriptionFileSummary | null;
 };
 
+export type PrescriptionProgressStepLabel =
+  | "Solicitud enviada"
+  | "Receta validada"
+  | "Pedido aprobado"
+  | "Farmacia asignada"
+  | "Listo para retirar";
+
+export type PrescriptionProgressSummary = {
+  title: string;
+  medicationName: string;
+  currentStep: number;
+  totalSteps: number;
+  steps: PrescriptionProgressStepLabel[];
+  progressPercentage: number;
+  dismissible: boolean;
+  currentStepLabel: string;
+  helperText: string | null;
+  currentStatus: PrescriptionRequestStatus;
+};
+
 export type PatientNotificationSummary = {
   patient_notification_id: number;
   patient_id: number;
@@ -179,6 +199,7 @@ export type PatientNotificationSummary = {
   read_at: string | null;
   created_at: string;
   updated_at: string;
+  prescription_progress?: PrescriptionProgressSummary | null;
 };
 
 export type PatientNotificationListResponse = {

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useEffectEvent, useId, useState } from "react";
 import { AlertTriangle, ArrowLeft, CheckCheck, Send } from "lucide-react";
 
 import type { PatientDetail } from "@/lib/doctor/types";
@@ -49,18 +49,6 @@ const requestStatusClassName: Record<PatientDetail["requests"][number]["status"]
   cancelled: "border-slate-200 bg-slate-100 text-slate-600",
 };
 
-const WEEKDAY_LABELS: Record<number, string> = {
-  0: "Domingo",
-  1: "Lunes",
-  2: "Martes",
-  3: "Miercoles",
-  4: "Jueves",
-  5: "Viernes",
-  6: "Sabado",
-};
-
-const WEEKDAY_DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
-
 const riskLabels = {
   normal: "Normal",
   warning: "En seguimiento",
@@ -72,6 +60,10 @@ const riskClassNames = {
   warning: "border-amber-200 bg-amber-50 text-amber-900",
   critical: "border-rose-200 bg-rose-50 text-rose-900",
 } as const;
+
+function requiresDoctorAction(status: PatientDetail["requests"][number]["status"]) {
+  return status === "pending" || status === "reviewed";
+}
 
 export function PatientDetailPanel({ patientId }: PatientDetailPanelProps) {
   const [data, setData] = useState<PatientDetail | null>(null);
@@ -96,30 +88,34 @@ export function PatientDetailPanel({ patientId }: PatientDetailPanelProps) {
     }
   }
 
+  const refreshPatientWithFeedback = useEffectEvent(async () => {
+    await refreshPatient();
+  });
+
   useEffect(() => {
-    let isActive = true;
+    void refreshPatientWithFeedback();
 
-    void getDoctorPatientDetail(patientId)
-      .then((result) => {
-        if (!isActive) {
-          return;
-        }
+    const intervalId = window.setInterval(() => {
+      void refreshPatientWithFeedback();
+    }, 15000);
 
-        setData(result);
-        setErrorMessage(null);
-      })
-      .catch((error) => {
-        if (!isActive) {
-          return;
-        }
+    const handleWindowFocus = () => {
+      void refreshPatientWithFeedback();
+    };
 
-        setErrorMessage(
-          error instanceof Error ? error.message : "No se pudo cargar el paciente.",
-        );
-      });
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshPatientWithFeedback();
+      }
+    };
+
+    window.addEventListener("focus", handleWindowFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      isActive = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleWindowFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [patientId]);
 
@@ -138,37 +134,10 @@ export function PatientDetailPanel({ patientId }: PatientDetailPanelProps) {
       : intervalHours.toFixed(2);
   }
 
-  function formatScheduleDays(daysOfWeek: number[]) {
-    if (daysOfWeek.length === 0) {
-      return "Sin dias configurados";
-    }
-
-    return WEEKDAY_DISPLAY_ORDER.filter((day) => daysOfWeek.includes(day))
-      .map((day) => WEEKDAY_LABELS[day] ?? `Dia ${day}`)
-      .join(", ");
-  }
-
-  function formatScheduleTimes(times: Array<string | null>) {
-    const filteredTimes = times.filter((time): time is string => Boolean(time));
-
-    if (filteredTimes.length === 0) {
-      return "Sin horarios cargados";
-    }
-
-    return filteredTimes.join(", ");
-  }
-
-  const pendingRequests =
-    data?.requests.filter(
-      (request) =>
-        request.status !== "ready_for_pickup" && request.status !== "cancelled",
-    ) ?? [];
-  const completedRequests =
-    data?.requests.filter(
-      (request) =>
-        request.status === "ready_for_pickup" ||
-        request.status === "cancelled",
-    ) ?? [];
+  const patientRequests = (data?.requests ?? []).filter((request) =>
+    requiresDoctorAction(request.status),
+  );
+  const followUpNotificationCount = data?.follow_up_notification_count ?? 0;
 
   async function handleRequestUpload(requestId: number, fileList: FileList | null) {
     const file = fileList?.[0];
@@ -287,12 +256,28 @@ export function PatientDetailPanel({ patientId }: PatientDetailPanelProps) {
         <ArrowLeft className="h-4 w-4" />
       </Link>
 
-      <Card className="border-blue-100 bg-[linear-gradient(180deg,_rgba(255,255,255,0.95),_rgba(248,251,255,0.95))] shadow-[0_28px_100px_rgba(37,99,235,0.08)]">
+      <Card
+        className={
+          followUpNotificationCount > 0
+            ? "relative border border-blue-300 bg-[linear-gradient(180deg,_rgba(239,246,255,0.98),_rgba(255,255,255,0.98))] ring-1 ring-blue-200/70 shadow-[0_28px_100px_rgba(37,99,235,0.12)]"
+            : "border-blue-100 bg-[linear-gradient(180deg,_rgba(255,255,255,0.95),_rgba(248,251,255,0.95))] shadow-[0_28px_100px_rgba(37,99,235,0.08)]"
+        }
+      >
+        {followUpNotificationCount > 0 ? (
+          <span className="absolute right-5 top-5 inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-blue-600 px-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(37,99,235,0.24)]">
+            {followUpNotificationCount}
+          </span>
+        ) : null}
         <CardHeader>
           <div className="flex flex-wrap items-center gap-2">
             <Badge className="border-blue-200 bg-blue-50 text-blue-900">Paciente</Badge>
             {data.risk_status ? (
               <Badge className={riskClassNames[data.risk_status]}>{riskLabels[data.risk_status]}</Badge>
+            ) : null}
+            {followUpNotificationCount > 0 ? (
+              <Badge className="border-blue-200 bg-blue-600 text-white">
+                Seguimiento pendiente
+              </Badge>
             ) : null}
           </div>
           <CardTitle className="font-sans text-[1.9rem] font-semibold tracking-[-0.03em] text-slate-900">
@@ -319,6 +304,13 @@ export function PatientDetailPanel({ patientId }: PatientDetailPanelProps) {
             Farmacia preferida:{" "}
             {data.preferred_pharmacy ? data.preferred_pharmacy.name : "Sin preferencia"}
           </p>
+          {followUpNotificationCount > 0 ? (
+            <p className="rounded-[1.2rem] border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800 md:col-span-2">
+              Este paciente tiene {followUpNotificationCount} alerta
+              {followUpNotificationCount === 1 ? "" : "s"} de seguimiento del chatbot todavia
+              visible{followUpNotificationCount === 1 ? "" : "s"} para el medico.
+            </p>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -332,6 +324,157 @@ export function PatientDetailPanel({ patientId }: PatientDetailPanelProps) {
           {successMessage}
         </div>
       ) : null}
+
+      <Card className="border-blue-100 bg-[linear-gradient(180deg,_rgba(255,255,255,0.95),_rgba(248,251,255,0.95))] shadow-[0_28px_100px_rgba(37,99,235,0.08)]">
+        <CardHeader>
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle className="font-sans text-[1.7rem] font-semibold tracking-[-0.03em] text-slate-900">
+              Pedidos
+            </CardTitle>
+            <Badge className="border-blue-200 bg-blue-600 text-white">
+              {patientRequests.length}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {patientRequests.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No hay pedidos para este paciente.
+            </p>
+          ) : null}
+          {patientRequests.map((request) => (
+            <div
+              key={request.prescription_request_id}
+              className="rounded-[1.75rem] border border-slate-200 bg-white p-5 text-sm text-slate-600 shadow-[0_12px_30px_rgba(15,23,42,0.04)]"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-semibold text-blue-900">{request.medication_name}</p>
+                <Badge className={requestStatusClassName[request.status]}>
+                  {requestStatusLabel[request.status]}
+                </Badge>
+              </div>
+              <p>Pedido: {new Date(request.requested_at).toLocaleString("es-AR")}</p>
+              {request.resolved_at ? (
+                <p>Actualizado: {new Date(request.resolved_at).toLocaleString("es-AR")}</p>
+              ) : null}
+              {request.assigned_pharmacy ? (
+                <p>Farmacia actual: {request.assigned_pharmacy.name}</p>
+              ) : null}
+              {request.current_file ? (
+                <p>Archivo actual: {request.current_file.original_filename}</p>
+              ) : (
+                <p>Sin receta adjunta.</p>
+              )}
+              {requiresDoctorAction(request.status) ? (
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <input
+                    id={`${fileInputPrefix}-${request.prescription_request_id}`}
+                    type="file"
+                    accept="image/png,application/pdf"
+                    className="sr-only"
+                    onChange={(event) =>
+                      handleRequestUpload(request.prescription_request_id, event.target.files)
+                    }
+                    disabled={uploadingRequestId === request.prescription_request_id}
+                  />
+                  {uploadingRequestId === request.prescription_request_id ||
+                  Boolean(request.current_file) ? (
+                    <span className="inline-flex h-9 w-full items-center justify-center rounded-md bg-slate-200 px-4 text-sm font-medium text-slate-500 sm:w-auto">
+                      {uploadingRequestId === request.prescription_request_id
+                        ? "Procesando..."
+                        : "Adjuntar receta"}
+                    </span>
+                  ) : (
+                    <label
+                      htmlFor={`${fileInputPrefix}-${request.prescription_request_id}`}
+                      className="inline-flex h-9 w-full cursor-pointer items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow-xs transition hover:bg-primary/90 sm:w-auto"
+                    >
+                      Adjuntar receta
+                    </label>
+                  )}
+                  <p className="text-xs text-slate-500">
+                    Adjuntá una receta en PNG o PDF para simular si la farmacia la acepta o la
+                    rechaza.
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card className="border-blue-100 bg-[linear-gradient(180deg,_rgba(255,255,255,0.95),_rgba(248,251,255,0.95))] shadow-[0_28px_100px_rgba(37,99,235,0.08)]">
+        <CardHeader>
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div className="space-y-3">
+              <Badge className="border-blue-200 bg-blue-50 text-blue-900">Tratamientos</Badge>
+              <div className="space-y-1">
+                <CardTitle className="font-sans text-[1.7rem] font-semibold tracking-[-0.03em] text-slate-900">
+                  Tratamientos
+                </CardTitle>
+                <CardDescription className="text-slate-500">
+                  Tratamientos registrados para este paciente.
+                </CardDescription>
+              </div>
+            </div>
+            <Button
+              className="bg-[linear-gradient(135deg,_#2563eb,_#1d4ed8)]"
+              variant={isFormVisible ? "outline" : "default"}
+              onClick={() => setIsFormVisible((current) => !current)}
+            >
+              {isFormVisible ? "Ocultar formulario" : "Agregar tratamiento"}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isFormVisible ? (
+            <PatientTreatmentForm
+              patientId={patientId}
+              onCreated={async () => {
+                await refreshPatient();
+                setIsFormVisible(false);
+                setSuccessMessage("Tratamiento agregado correctamente.");
+              }}
+              onCancel={() => setIsFormVisible(false)}
+            />
+          ) : null}
+          {data.medications.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No hay medicacion registrada todavia.
+            </p>
+          ) : null}
+          {data.medications.map((medication) => (
+            <div
+              key={medication.patient_medication_id}
+              className="rounded-[1.75rem] border border-slate-200 bg-white p-5 text-sm text-slate-600 shadow-[0_12px_30px_rgba(15,23,42,0.04)]"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-semibold text-blue-900">{medication.medication_name}</p>
+                {medication.weekly_schedule?.is_enabled ? (
+                  <Badge className="border-emerald-200 bg-emerald-50 text-emerald-900">
+                    Calendario semanal activo
+                  </Badge>
+                ) : (
+                  <Badge className="border-slate-200 bg-slate-100 text-slate-600">
+                    Sin calendario semanal
+                  </Badge>
+                )}
+              </div>
+              <p>Dosis diaria: {medication.dose_text}</p>
+              {formatIntervalHours(medication.intakes_per_day) ? (
+                <p>Intervalo en hs: {formatIntervalHours(medication.intakes_per_day)}</p>
+              ) : null}
+              {medication.pills_per_box ? (
+                <p>Cantidad de unidades por caja: {medication.pills_per_box}</p>
+              ) : null}
+              <p>Cantidad de unidades (cajas): {medication.box_count}</p>
+              <p>Inicio: {formatDate(medication.start_date)}</p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <PatientWeeklyCalendarPanel patientId={patientId} />
 
       <Card className="border-blue-100 bg-[linear-gradient(180deg,_rgba(255,255,255,0.95),_rgba(248,251,255,0.95))] shadow-[0_28px_100px_rgba(37,99,235,0.08)]">
         <CardHeader>
@@ -461,200 +604,6 @@ export function PatientDetailPanel({ patientId }: PatientDetailPanelProps) {
               {isSendingDoctorMessage ? "Enviando..." : "Enviar notificacion"}
             </Button>
           </form>
-        </CardContent>
-      </Card>
-
-      <PatientWeeklyCalendarPanel patientId={patientId} />
-
-      <Card className="border-blue-100 bg-[linear-gradient(180deg,_rgba(255,255,255,0.95),_rgba(248,251,255,0.95))] shadow-[0_28px_100px_rgba(37,99,235,0.08)]">
-        <CardHeader>
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div className="space-y-3">
-              <Badge className="border-blue-200 bg-blue-50 text-blue-900">Tratamientos</Badge>
-              <div className="space-y-1">
-                <CardTitle className="font-sans text-[1.7rem] font-semibold tracking-[-0.03em] text-slate-900">
-                  Tratamientos
-                </CardTitle>
-                <CardDescription className="text-slate-500">
-                  Tratamientos registrados para este paciente.
-                </CardDescription>
-              </div>
-            </div>
-            <Button
-              className="bg-[linear-gradient(135deg,_#2563eb,_#1d4ed8)]"
-              variant={isFormVisible ? "outline" : "default"}
-              onClick={() => setIsFormVisible((current) => !current)}
-            >
-              {isFormVisible ? "Ocultar formulario" : "Agregar tratamiento"}
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {isFormVisible ? (
-            <PatientTreatmentForm
-              patientId={patientId}
-              onCreated={async () => {
-                await refreshPatient();
-              }}
-              onCancel={() => setIsFormVisible(false)}
-            />
-          ) : null}
-          {data.medications.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No hay medicacion registrada todavia.
-            </p>
-          ) : null}
-          {data.medications.map((medication) => (
-            <div
-              key={medication.patient_medication_id}
-              className="rounded-[1.75rem] border border-slate-200 bg-white p-5 text-sm text-slate-600 shadow-[0_12px_30px_rgba(15,23,42,0.04)]"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="font-semibold text-blue-900">{medication.medication_name}</p>
-                {medication.weekly_schedule?.is_enabled ? (
-                  <Badge className="border-emerald-200 bg-emerald-50 text-emerald-900">
-                    Calendario semanal activo
-                  </Badge>
-                ) : (
-                  <Badge className="border-slate-200 bg-slate-100 text-slate-600">
-                    Sin calendario semanal
-                  </Badge>
-                )}
-              </div>
-              <p>Dosis diaria: {medication.dose_text}</p>
-              {formatIntervalHours(medication.intakes_per_day) ? (
-                <p>Intervalo en hs: {formatIntervalHours(medication.intakes_per_day)}</p>
-              ) : null}
-              {medication.pills_per_box ? (
-                <p>Cantidad de unidades por caja: {medication.pills_per_box}</p>
-              ) : null}
-              <p>Cantidad de unidades (cajas): {medication.box_count}</p>
-              <p>Inicio: {formatDate(medication.start_date)}</p>
-              {medication.weekly_schedule?.is_enabled ? (
-                <div className="mt-4 rounded-[1rem] border border-emerald-100 bg-emerald-50/70 p-4 text-slate-700">
-                  <p className="font-semibold text-emerald-900">Resumen del calendario</p>
-                  <p>Dias: {formatScheduleDays(medication.weekly_schedule.days_of_week)}</p>
-                  <p>Tomas por dia: {medication.weekly_schedule.intake_slots.length}</p>
-                  <p>
-                    Horarios:{" "}
-                    {formatScheduleTimes(
-                      medication.weekly_schedule.intake_slots.map((slot) => slot.time),
-                    )}
-                  </p>
-                </div>
-              ) : null}
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      <Card className="border-blue-100 bg-[linear-gradient(180deg,_rgba(255,255,255,0.95),_rgba(248,251,255,0.95))] shadow-[0_28px_100px_rgba(37,99,235,0.08)]">
-        <CardHeader>
-          <Badge className="border-blue-200 bg-blue-50 text-blue-900">Pedidos</Badge>
-          <CardTitle className="font-sans text-[1.7rem] font-semibold tracking-[-0.03em] text-slate-900">
-            Pedidos
-          </CardTitle>
-          <CardDescription className="text-slate-500">
-            Historial de solicitudes de receta y archivos asociados.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-5 lg:grid-cols-2">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-base font-semibold text-slate-900">Pedidos pendientes</h3>
-              <Badge className="border-blue-200 bg-blue-600 text-white">
-                {pendingRequests.length}
-              </Badge>
-            </div>
-            {pendingRequests.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No hay pedidos pendientes para este paciente.
-              </p>
-            ) : null}
-            {pendingRequests.map((request) => (
-              <div
-                key={request.prescription_request_id}
-                className="rounded-[1.75rem] border border-slate-200 bg-white p-5 text-sm text-slate-600 shadow-[0_12px_30px_rgba(15,23,42,0.04)]"
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-semibold text-blue-900">{request.medication_name}</p>
-                  <Badge className={requestStatusClassName[request.status]}>
-                    {requestStatusLabel[request.status]}
-                  </Badge>
-                </div>
-                <p>Pedido: {new Date(request.requested_at).toLocaleString("es-AR")}</p>
-                {request.current_file ? (
-                  <p>Archivo actual: {request.current_file.original_filename}</p>
-                ) : (
-                  <p>Sin receta adjunta.</p>
-                )}
-                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <input
-                    id={`${fileInputPrefix}-${request.prescription_request_id}`}
-                    type="file"
-                    accept="image/png,application/pdf"
-                    className="sr-only"
-                    onChange={(event) =>
-                      handleRequestUpload(request.prescription_request_id, event.target.files)
-                    }
-                    disabled={uploadingRequestId === request.prescription_request_id}
-                  />
-                  {uploadingRequestId === request.prescription_request_id ||
-                  Boolean(request.current_file) ? (
-                    <span className="inline-flex h-9 w-full items-center justify-center rounded-md bg-slate-200 px-4 text-sm font-medium text-slate-500 sm:w-auto">
-                      {uploadingRequestId === request.prescription_request_id
-                        ? "Procesando..."
-                        : "Adjuntar receta"}
-                    </span>
-                  ) : (
-                    <label
-                      htmlFor={`${fileInputPrefix}-${request.prescription_request_id}`}
-                      className="inline-flex h-9 w-full cursor-pointer items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow-xs transition hover:bg-primary/90 sm:w-auto"
-                    >
-                      Adjuntar receta
-                    </label>
-                  )}
-                  <p className="text-xs text-slate-500">
-                    Adjuntá una receta en PNG o PDF para simular si la farmacia la acepta o la
-                    rechaza.
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-base font-semibold text-slate-900">Pedidos completos</h3>
-              <Badge className="border-slate-200 bg-slate-100 text-slate-600">
-                {completedRequests.length}
-              </Badge>
-            </div>
-            {completedRequests.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No hay pedidos completos para este paciente.
-              </p>
-            ) : null}
-            {completedRequests.map((request) => (
-              <div
-                key={request.prescription_request_id}
-                className="rounded-[1.75rem] border border-slate-200 bg-white p-5 text-sm text-slate-600 shadow-[0_12px_30px_rgba(15,23,42,0.04)]"
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-semibold text-slate-800">{request.medication_name}</p>
-                  <Badge className={requestStatusClassName[request.status]}>
-                    {requestStatusLabel[request.status]}
-                  </Badge>
-                </div>
-                <p>Pedido: {new Date(request.requested_at).toLocaleString("es-AR")}</p>
-                {request.current_file ? (
-                  <p>Archivo actual: {request.current_file.original_filename}</p>
-                ) : (
-                  <p>Sin receta adjunta.</p>
-                )}
-              </div>
-            ))}
-          </div>
         </CardContent>
       </Card>
     </div>

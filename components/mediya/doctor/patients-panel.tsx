@@ -248,8 +248,18 @@ export function PatientsPanel() {
               <Link
                 key={patient.patient_id}
                 href={`/panel/pacientes/${patient.patient_id}`}
-                className="rounded-[1.6rem] border border-slate-200 bg-white px-5 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.04)] transition hover:border-blue-200 hover:bg-blue-50/40"
+                className={cn(
+                  "relative rounded-[1.6rem] px-5 py-4 shadow-[0_12px_30px_rgba(15,23,42,0.04)] transition",
+                  patient.follow_up_notification_count > 0
+                    ? "border border-blue-300 bg-[linear-gradient(180deg,_rgba(239,246,255,0.98),_rgba(248,250,252,0.98))] ring-1 ring-blue-200/70 hover:border-blue-400"
+                    : "border border-slate-200 bg-white hover:border-blue-200 hover:bg-blue-50/40",
+                )}
               >
+                {patient.follow_up_notification_count > 0 ? (
+                  <span className="absolute right-4 top-4 inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-blue-600 px-1.5 text-xs font-semibold text-white shadow-[0_8px_20px_rgba(37,99,235,0.22)]">
+                    {patient.follow_up_notification_count}
+                  </span>
+                ) : null}
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div className="space-y-1">
                     <p className="text-lg font-semibold text-slate-900">{patient.name}</p>
@@ -260,6 +270,11 @@ export function PatientsPanel() {
                       {patient.zone || "Zona sin definir"} ·{" "}
                       {patient.preferred_pharmacy?.name || "Sin farmacia preferida"}
                     </p>
+                    {patient.follow_up_notification_count > 0 ? (
+                      <p className="text-xs font-medium text-blue-700">
+                        Tiene seguimiento del chatbot pendiente.
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">

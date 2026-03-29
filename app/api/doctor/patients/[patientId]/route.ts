@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 
 import { DoctorSessionError, requireAuthenticatedDoctor } from "@/lib/auth/doctor-session";
-import { listDoctorAlerts, getPatientRiskIndicators } from "@/lib/chatbot/alerts";
+import {
+  getPatientFollowUpNotificationCounts,
+  getPatientRiskIndicators,
+  listDoctorAlerts,
+} from "@/lib/chatbot/alerts";
 import { normalizeWeeklyScheduleSummary } from "@/lib/calendar/utils";
+import { autoAdvanceTestingPrescriptionRequests } from "@/lib/patient/notifications";
 import type {
   PatientDetail,
   PatientMedicationSummary,
@@ -146,6 +151,11 @@ export async function GET(request: Request, context: PatientContext) {
       );
     }
 
+    await autoAdvanceTestingPrescriptionRequests({
+      activeDoctorId: doctor.activeDoctorId,
+      patientId: parsedPatientId,
+    });
+
     const [{ data: medications, error: medicationsError }, { data: requests, error: requestsError }] =
       await Promise.all([
         supabase
@@ -176,10 +186,14 @@ export async function GET(request: Request, context: PatientContext) {
     }
 
     const requestIds = (requests ?? []).map((item) => item.prescription_request_id);
-    const [riskIndicators, doctorAlerts] = await Promise.all([
+    const [riskIndicators, doctorAlerts, followUpNotificationCounts] = await Promise.all([
       getPatientRiskIndicators([parsedPatientId]),
       listDoctorAlerts({
         activeDoctorId: doctor.activeDoctorId,
+      }),
+      getPatientFollowUpNotificationCounts({
+        activeDoctorId: doctor.activeDoctorId,
+        patientIds: [parsedPatientId],
       }),
     ]);
     const currentFiles =
@@ -223,6 +237,7 @@ export async function GET(request: Request, context: PatientContext) {
       risk_status: risk?.risk_status ?? null,
       risk_score: risk?.risk_score ?? null,
       last_alert_at: risk?.last_alert_at ?? null,
+      follow_up_notification_count: followUpNotificationCounts.get(parsedPatientId) ?? 0,
       medications: ((medications ?? []) as (Omit<PatientMedicationSummary, "weekly_schedule"> & {
         weekly_schedule_configs: WeeklyScheduleRelation | WeeklyScheduleRelation[] | null;
       })[]).map((medication) => ({

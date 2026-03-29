@@ -21,6 +21,7 @@ export type PatientSummary = {
   risk_status: "normal" | "warning" | "critical" | null;
   risk_score: number | null;
   last_alert_at: string | null;
+  follow_up_notification_count: number;
 };
 
 export type PatientRiskIndicator = {
@@ -81,6 +82,7 @@ export type PatientDetail = {
   risk_status: "normal" | "warning" | "critical" | null;
   risk_score: number | null;
   last_alert_at: string | null;
+  follow_up_notification_count: number;
   medications: PatientMedicationSummary[];
   requests: PrescriptionRequestSummary[];
   recent_alerts: DoctorPatientAlertSummary[];

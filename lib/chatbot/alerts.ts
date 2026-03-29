@@ -273,3 +273,33 @@ export async function getPatientRiskIndicators(patientIds: number[]) {
 
   return indicatorMap;
 }
+
+export async function getPatientFollowUpNotificationCounts(input: {
+  activeDoctorId: number;
+  patientIds: number[];
+}) {
+  if (input.patientIds.length === 0) {
+    return new Map<number, number>();
+  }
+
+  const supabase = createAdminSupabaseClient();
+  const { data, error } = await supabase
+    .from("doctor_patient_alerts")
+    .select("patient_id")
+    .eq("active_doctor_id", input.activeDoctorId)
+    .eq("severity", "warning")
+    .in("status", ["open", "acknowledged"])
+    .in("patient_id", input.patientIds);
+
+  if (error) {
+    throw new Error("No se pudieron cargar las alertas de seguimiento del medico.");
+  }
+
+  const countByPatientId = new Map<number, number>();
+
+  for (const row of (data ?? []) as Array<{ patient_id: number }>) {
+    countByPatientId.set(row.patient_id, (countByPatientId.get(row.patient_id) ?? 0) + 1);
+  }
+
+  return countByPatientId;
+}

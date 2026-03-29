@@ -5,7 +5,7 @@ import {
   normalizePatientMedicationInput,
   validatePatientMedicationInput,
 } from "@/lib/doctor/patient-medication";
-import { getPatientRiskIndicators } from "@/lib/chatbot/alerts";
+import { getPatientFollowUpNotificationCounts, getPatientRiskIndicators } from "@/lib/chatbot/alerts";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import type {
   CreatePatientPayload,
@@ -75,6 +75,7 @@ function mapPatientRow(row: PatientRow): PatientSummary {
     risk_status: null,
     risk_score: null,
     last_alert_at: null,
+    follow_up_notification_count: 0,
   };
 }
 
@@ -166,9 +167,14 @@ export async function GET(request: Request) {
     }
 
     const mappedPatients = ((patientRows ?? []) as unknown as PatientRow[]).map(mapPatientRow);
-    const riskIndicators = await getPatientRiskIndicators(
-      mappedPatients.map((patient) => patient.patient_id),
-    );
+    const patientIds = mappedPatients.map((patient) => patient.patient_id);
+    const [riskIndicators, followUpNotificationCounts] = await Promise.all([
+      getPatientRiskIndicators(patientIds),
+      getPatientFollowUpNotificationCounts({
+        activeDoctorId: doctor.activeDoctorId,
+        patientIds,
+      }),
+    ]);
 
     return NextResponse.json({
       doctor: {
@@ -183,6 +189,7 @@ export async function GET(request: Request) {
           risk_status: risk?.risk_status ?? null,
           risk_score: risk?.risk_score ?? null,
           last_alert_at: risk?.last_alert_at ?? null,
+          follow_up_notification_count: followUpNotificationCounts.get(patient.patient_id) ?? 0,
         };
       }),
       pharmacies: (pharmacies ?? []) as PharmacySummary[],
