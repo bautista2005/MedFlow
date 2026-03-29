@@ -4,6 +4,7 @@ Estos 3 medicos existen solo en approved_doctors.
 Todavia no tienen email ni password porque aun no se registraron en la app.
 El objetivo del test es  que el registro web cree el active_doctor a partir de uno de estos registros aprobados.
 
+CREDENCIALES PARA TESTEAR MEDICO -> dni: 28444555 contraseña: 12345678
 1. full_name: Dra. Martina Quiroga
    dni: 30111222
    license_number: MN-145872
@@ -17,7 +18,7 @@ El objetivo del test es  que el registro web cree el active_doctor a partir de u
    organization: Swiss Medical
    specialty: Cardiologia
    status: approved
-
+   
 3. full_name: Dra. Camila Benitez
    dni: 32666777
    license_number: MN-158903
